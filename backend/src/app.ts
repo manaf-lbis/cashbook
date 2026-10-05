@@ -43,17 +43,20 @@ export const createApp = (): Application => {
     app.use(morgan('dev'));
   }
 
-  // Health check
-  app.get('/api/health', (_req: Request, res: Response) => {
+  // Health check (supports both /health and /api/health)
+  const healthCheck = (_req: Request, res: Response) => {
     res.json({
       status: 'OK',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });
-  });
+  };
+  app.get('/health', healthCheck);
+  app.get('/api/health', healthCheck);
 
-  // Mount API
+  // Mount API (supports both with /api and without /api)
   app.use('/api', apiRouter);
+  app.use('/', apiRouter);
 
   // 404 Route
   app.use((_req: Request, _res: Response, next: NextFunction) => {
