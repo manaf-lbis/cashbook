@@ -6,6 +6,7 @@ import { SaveDailyClosingSchema } from '../validators/schemas';
 const router = Router();
 const controller = new DailyClosingController();
 
+router.get('/', controller.getLiveSummary);
 router.get('/summary', controller.getLiveSummary);
 router.get('/history', controller.getHistory);
 router.get('/timeline', controller.getTimeline);
