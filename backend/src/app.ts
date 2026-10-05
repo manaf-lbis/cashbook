@@ -10,7 +10,32 @@ export const createApp = (): Application => {
   const app = express();
 
   // Middleware
-  app.use(cors({ origin: [ENV.CLIENT_URL, 'http://localhost:5173', 'http://127.0.0.1:5173'], credentials: true }));
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps, curl, or server health checks)
+        if (!origin) return callback(null, true);
+
+        const configuredClient = ENV.CLIENT_URL ? ENV.CLIENT_URL.replace(/\/$/, '') : '';
+        const allowed = [
+          configuredClient,
+          'http://localhost:5173',
+          'http://127.0.0.1:5173',
+        ].filter(Boolean);
+
+        if (
+          !configuredClient ||
+          configuredClient === '*' ||
+          allowed.includes(origin.replace(/\/$/, '')) ||
+          ENV.NODE_ENV !== 'production'
+        ) {
+          return callback(null, true);
+        }
+        return callback(null, true);
+      },
+      credentials: true,
+    })
+  );
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
