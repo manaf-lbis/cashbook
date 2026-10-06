@@ -53,8 +53,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Total Available Liquid Funds Badge */}
-        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 text-white text-xs shadow-sm">
-          <span className="text-slate-400 hidden xs:inline">Total Funds:</span>
+        <div className="flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-xl bg-slate-900 text-white text-xs shadow-sm">
+          <span className="text-slate-400 hidden sm:inline">Total Funds:</span>
           <span className="font-mono font-extrabold text-emerald-400">{formatINR(totalLiquidity)}</span>
         </div>
 

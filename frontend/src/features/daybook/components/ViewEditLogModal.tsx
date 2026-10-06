@@ -16,10 +16,10 @@ export const ViewEditLogModal: React.FC<ViewEditLogModalProps> = ({ isOpen, onCl
   const logs = entry.editLogs || [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden max-h-[92vh] flex flex-col my-auto">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-amber-50 text-amber-600">
               <History className="w-5 h-5" />
@@ -41,7 +41,7 @@ export const ViewEditLogModal: React.FC<ViewEditLogModalProps> = ({ isOpen, onCl
         </div>
 
         {/* List of Edit Logs */}
-        <div className="p-6 overflow-y-auto max-h-[60vh] space-y-3.5">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-3.5">
           {logs.length === 0 ? (
             <div className="py-8 text-center text-xs text-slate-400">No edit history recorded for this entry.</div>
           ) : (
@@ -98,7 +98,7 @@ export const ViewEditLogModal: React.FC<ViewEditLogModalProps> = ({ isOpen, onCl
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
+        <div className="px-4 sm:px-6 py-3 sm:py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end flex-shrink-0">
           <Button type="button" variant="outline" onClick={onClose}>
             Close
           </Button>

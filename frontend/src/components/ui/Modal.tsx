@@ -44,7 +44,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-screen items-center justify-center p-4 text-center sm:p-0">
+      <div className="flex min-h-screen items-center justify-center p-3 text-center sm:p-0">
         {/* Backdrop */}
         <div
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
@@ -53,24 +53,24 @@ export const Modal: React.FC<ModalProps> = ({
 
         {/* Modal Dialog */}
         <div
-          className={`relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all w-full ${maxWidthClasses[maxWidth]} animate-in zoom-in-95 duration-200 p-6 my-8`}
+          className={`relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all w-full ${maxWidthClasses[maxWidth]} animate-in zoom-in-95 duration-200 p-4 sm:p-6 my-4 sm:my-8 max-h-[92vh] flex flex-col`}
         >
           {/* Header */}
-          <div className="flex items-start justify-between pb-4 border-b border-slate-100">
+          <div className="flex items-start justify-between pb-3 sm:pb-4 border-b border-slate-100 shrink-0">
             <div>
-              <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900">{title}</h3>
               {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
             </div>
             <button
               onClick={onClose}
-              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Body */}
-          <div className="mt-4">{children}</div>
+          <div className="mt-3 sm:mt-4 overflow-y-auto flex-1 pr-0.5">{children}</div>
         </div>
       </div>
     </div>

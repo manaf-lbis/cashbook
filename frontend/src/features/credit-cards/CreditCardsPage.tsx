@@ -282,26 +282,26 @@ export const CreditCardsPage: React.FC = () => {
         </div>
 
         {/* Top Cumulative Summary Row */}
-        <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between text-sm">
+        <div className="px-3.5 sm:px-5 py-2.5 sm:py-3.5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between text-xs sm:text-sm gap-2">
           <div>
             <span className="text-slate-500 font-medium">Total Debt:</span>{' '}
-            <span className="font-mono font-black text-rose-600 text-base">
+            <span className="font-mono font-black text-rose-600 text-sm sm:text-base">
               ₹{totalDebt.toLocaleString('en-IN')} ↗
             </span>
           </div>
 
           <div>
             <span className="text-slate-500 font-medium">Available:</span>{' '}
-            <span className="font-mono font-bold text-emerald-600 text-base">
+            <span className="font-mono font-bold text-emerald-600 text-sm sm:text-base">
               ₹{totalAvailable.toLocaleString('en-IN')} ↙
             </span>
           </div>
 
           <button
             onClick={() => window.print()}
-            className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50/80 hover:bg-blue-100 px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors"
+            className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50/80 hover:bg-blue-100 px-2.5 sm:px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap"
           >
-            <FileText className="w-4 h-4" /> View Report
+            <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> View Report
           </button>
         </div>
 
@@ -432,52 +432,62 @@ export const CreditCardsPage: React.FC = () => {
         {selectedCard ? (
           <>
             {/* Top Card Bar */}
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-3.5">
-                <button
-                  onClick={() => setSelectedCard(null)}
-                  className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg -ml-2"
-                >
-                  <ArrowLeft className="w-5 h-5" />
-                </button>
-                <div
-                  className={`w-11 h-11 rounded-full font-bold text-base flex items-center justify-center ${getAvatarColor(
-                    selectedCard.cardName
-                  )}`}
-                >
-                  <CardIcon className="w-5 h-5" />
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center justify-between sm:justify-start gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <button
+                    onClick={() => setSelectedCard(null)}
+                    className="md:hidden p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg -ml-1 flex-shrink-0"
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                  </button>
+                  <div
+                    className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full font-bold text-sm sm:text-base flex items-center justify-center flex-shrink-0 ${getAvatarColor(
+                      selectedCard.cardName
+                    )}`}
+                  >
+                    <CardIcon className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-tight truncate">
+                      {selectedCard.cardName}
+                    </h3>
+                    <p className="text-xs text-slate-400 font-mono mt-0.5 truncate">
+                      {selectedCard.bankName} • Ending {selectedCard.last4Digits}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900 leading-tight">
-                    {selectedCard.cardName}
-                  </h3>
-                  <p className="text-xs text-slate-400 font-mono mt-0.5">
-                    {selectedCard.bankName} • Ending {selectedCard.last4Digits}
-                  </p>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-5">
+                {/* Mobile Report Button */}
                 <button
                   onClick={() => window.print()}
-                  className="text-xs font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-colors"
+                  className="sm:hidden text-xs font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors flex-shrink-0"
+                >
+                  <FileText className="w-3.5 h-3.5 text-slate-500" /> Report
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-5">
+                <button
+                  onClick={() => window.print()}
+                  className="hidden sm:flex text-xs font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3.5 py-2 rounded-lg items-center gap-1.5 transition-colors"
                 >
                   <FileText className="w-4 h-4 text-slate-500" /> Report
                 </button>
 
-                <div className="text-right border-l border-slate-200 pl-5">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                <div className="w-full sm:w-auto text-right bg-slate-50 sm:bg-transparent p-2.5 sm:p-0 rounded-xl sm:rounded-none sm:border-l sm:border-slate-200 sm:pl-5 flex sm:block items-center justify-between">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                     CARD DEBT:
                   </span>
-                  <span className="text-base font-black font-mono text-rose-600">
+                  <span className="text-sm sm:text-base font-black font-mono text-rose-600">
                     You'll Pay: ₹{selectedCard.totalOutstanding.toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Entries Table Header */}
-            <div className="px-6 py-3 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
+            {/* Entries Table Header (Desktop only) */}
+            <div className="hidden sm:flex px-6 py-3 bg-slate-50/80 border-b border-slate-200 items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
               <span>ENTRIES</span>
               <div className="flex items-center gap-12 pr-2">
                 <span className="w-28 text-right">CASH DRAWN / SWIPE</span>
@@ -487,57 +497,111 @@ export const CreditCardsPage: React.FC = () => {
             </div>
 
             {/* Entries Stream */}
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 px-6">
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 px-4 sm:px-6 py-3 sm:py-0 space-y-3 sm:space-y-0">
               {transactions.length > 0 ? (
                 transactions.map((tx) => (
-                  <div
-                    key={tx._id}
-                    className="py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors"
-                  >
-                    <div>
-                      <p className="text-sm font-bold text-slate-800 font-mono">
-                        {formatDateTime(tx.date)}
-                      </p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Card Balance: ₹{tx.balanceAfter.toLocaleString('en-IN')}
-                      </p>
-                      <p className="text-sm text-slate-600 mt-1 font-medium">
-                        {tx.remarks || (tx.type === CreditCardTransactionType.PAYMENT ? 'Bill Payment' : 'Cash Drawn / Purchase')}
-                      </p>
-                    </div>
+                  <React.Fragment key={tx._id}>
+                    {/* Mobile Card Layout (< sm) */}
+                    <div className="sm:hidden p-3.5 rounded-xl border border-slate-200 bg-white hover:border-slate-300 shadow-2xs space-y-2.5 transition-colors">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-800 font-mono">
+                            {formatDateTime(tx.date)}
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Card Balance: ₹{tx.balanceAfter.toLocaleString('en-IN')}
+                          </p>
+                          <p className="text-xs text-slate-600 mt-1 font-medium">
+                            {tx.remarks ||
+                              (tx.type === CreditCardTransactionType.PAYMENT
+                                ? 'Bill Payment'
+                                : 'Cash Drawn / Purchase')}
+                          </p>
+                        </div>
 
-                    <div className="flex items-center gap-12 pr-2">
-                      {/* DRAWN / SWIPE */}
-                      <div className="w-28 text-right font-mono font-bold text-sm">
-                        {tx.type !== CreditCardTransactionType.PAYMENT ? (
-                          <span className="text-rose-600">₹{tx.amount.toLocaleString('en-IN')}</span>
-                        ) : (
-                          <span className="text-slate-300">-</span>
-                        )}
+                        <div className="flex items-center flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setEditingTx(tx)}
+                            className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                            title="Edit this entry"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
 
-                      {/* BILL PAID */}
-                      <div className="w-28 text-right font-mono font-bold text-sm">
-                        {tx.type === CreditCardTransactionType.PAYMENT ? (
-                          <span className="text-emerald-600">₹{tx.amount.toLocaleString('en-IN')}</span>
-                        ) : (
-                          <span className="text-slate-300">-</span>
-                        )}
-                      </div>
-
-                      {/* EDIT ACTION */}
-                      <div className="w-8 flex justify-center">
-                        <button
-                          type="button"
-                          onClick={() => setEditingTx(tx)}
-                          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                          title="Edit this entry"
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                        <span className="text-xs font-bold">
+                          {tx.type !== CreditCardTransactionType.PAYMENT ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 uppercase">
+                              DRAWN / SWIPE
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+                              BILL PAID
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          className={`font-mono font-black text-base ${
+                            tx.type !== CreditCardTransactionType.PAYMENT
+                              ? 'text-rose-600'
+                              : 'text-emerald-600'
+                          }`}
                         >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
+                          ₹{tx.amount.toLocaleString('en-IN')}
+                        </span>
                       </div>
                     </div>
-                  </div>
+
+                    {/* Desktop Row Layout (>= sm) */}
+                    <div className="hidden sm:flex py-3.5 items-center justify-between hover:bg-slate-50/50 transition-colors">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800 font-mono">
+                          {formatDateTime(tx.date)}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Card Balance: ₹{tx.balanceAfter.toLocaleString('en-IN')}
+                        </p>
+                        <p className="text-sm text-slate-600 mt-1 font-medium">
+                          {tx.remarks || (tx.type === CreditCardTransactionType.PAYMENT ? 'Bill Payment' : 'Cash Drawn / Purchase')}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-12 pr-2">
+                        {/* DRAWN / SWIPE */}
+                        <div className="w-28 text-right font-mono font-bold text-sm">
+                          {tx.type !== CreditCardTransactionType.PAYMENT ? (
+                            <span className="text-rose-600">₹{tx.amount.toLocaleString('en-IN')}</span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </div>
+
+                        {/* BILL PAID */}
+                        <div className="w-28 text-right font-mono font-bold text-sm">
+                          {tx.type === CreditCardTransactionType.PAYMENT ? (
+                            <span className="text-emerald-600">₹{tx.amount.toLocaleString('en-IN')}</span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </div>
+
+                        {/* EDIT ACTION */}
+                        <div className="w-8 flex justify-center">
+                          <button
+                            type="button"
+                            onClick={() => setEditingTx(tx)}
+                            className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                            title="Edit this entry"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </React.Fragment>
                 ))
               ) : (
                 <div className="py-24 text-center text-sm text-slate-400">
@@ -547,15 +611,15 @@ export const CreditCardsPage: React.FC = () => {
             </div>
 
             {/* Bottom Action Buttons */}
-            <div className="p-4 border-t border-slate-200 bg-white">
-              <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto">
+            <div className="p-3 sm:p-4 border-t border-slate-200 bg-white">
+              <div className="grid grid-cols-2 gap-2.5 sm:gap-4 max-w-lg mx-auto">
                 <button
                   onClick={() => {
                     setAmount('');
                     setRemarks('');
                     setIsDrawnModalOpen(true);
                   }}
-                  className="py-3.5 px-4 rounded-xl bg-[#fee2e2] hover:bg-[#fecaca] text-[#dc2626] font-bold text-base transition-colors shadow-sm active:scale-[0.99] flex items-center justify-center gap-2"
+                  className="py-3 sm:py-3.5 px-3 sm:px-4 rounded-xl bg-[#fee2e2] hover:bg-[#fecaca] text-[#dc2626] font-bold text-sm sm:text-base transition-colors shadow-sm active:scale-[0.99] flex items-center justify-center gap-2"
                 >
                   Cash Drawn / Swipe ₹
                 </button>
@@ -566,7 +630,7 @@ export const CreditCardsPage: React.FC = () => {
                     setRemarks('');
                     setIsPayModalOpen(true);
                   }}
-                  className="py-3.5 px-4 rounded-xl bg-[#dcfce7] hover:bg-[#bbf7d0] text-[#16a34a] font-bold text-base transition-colors shadow-sm active:scale-[0.99] flex items-center justify-center gap-2"
+                  className="py-3 sm:py-3.5 px-3 sm:px-4 rounded-xl bg-[#dcfce7] hover:bg-[#bbf7d0] text-[#16a34a] font-bold text-sm sm:text-base transition-colors shadow-sm active:scale-[0.99] flex items-center justify-center gap-2"
                 >
                   Pay Card Bill ₹
                 </button>

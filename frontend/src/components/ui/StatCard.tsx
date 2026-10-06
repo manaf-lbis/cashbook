@@ -26,20 +26,20 @@ export const StatCard: React.FC<StatCardProps> = ({
   return (
     <div
       onClick={onClick}
-      className={`rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all hover:shadow-md hover:border-slate-300 ${
-        onClick ? 'cursor-pointer' : ''
+      className={`rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm transition-all hover:shadow-md hover:border-slate-300 ${
+        onClick ? 'cursor-pointer active:scale-[0.99]' : ''
       }`}
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{title}</span>
-        <div className={`p-2 rounded-xl ${iconBgColor} ${iconTextColor}`}>
+        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider truncate pr-2">{title}</span>
+        <div className={`p-2 rounded-xl shrink-0 ${iconBgColor} ${iconTextColor}`}>
           {icon}
         </div>
       </div>
-      <div className="mt-3">
-        <h4 className="text-2xl font-bold text-slate-900 tracking-tight font-mono">{amount}</h4>
+      <div className="mt-2.5 sm:mt-3">
+        <h4 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight font-mono truncate">{amount}</h4>
         {(subtitle || trendText) && (
-          <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-500">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
             {trendText && (
               <span
                 className={`font-semibold ${
@@ -49,7 +49,7 @@ export const StatCard: React.FC<StatCardProps> = ({
                 {trendText}
               </span>
             )}
-            {subtitle && <span>{subtitle}</span>}
+            {subtitle && <span className="truncate">{subtitle}</span>}
           </div>
         )}
       </div>

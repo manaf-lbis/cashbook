@@ -70,9 +70,9 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50/70">
-      <div className="max-w-7xl mx-auto px-6 py-8 sm:px-8 sm:py-10 space-y-7">
+      <div className="max-w-7xl mx-auto px-3.5 py-4 sm:px-8 sm:py-8 space-y-4 sm:space-y-6">
         {/* Top Header Bar */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-1">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 sm:gap-4 pb-1">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/60">
@@ -84,20 +84,20 @@ export const DashboardPage: React.FC = () => {
                 {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
               </span>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
               Financial Overview
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5">
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
               Live balances, counter cash flow, and market credit positions.
             </p>
           </div>
 
           {/* Quick Action Navigation Buttons */}
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
             <Button
               size="sm"
               variant="outline"
-              className="bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 shadow-sm font-semibold"
+              className="bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 shadow-sm font-semibold justify-center"
               leftIcon={<Plus className="w-4 h-4 text-emerald-600" />}
               onClick={() => navigate('/daybook')}
             >
@@ -106,7 +106,7 @@ export const DashboardPage: React.FC = () => {
             <Button
               size="sm"
               variant="outline"
-              className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
+              className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm justify-center"
               leftIcon={<Receipt className="w-4 h-4 text-rose-500" />}
               onClick={() => navigate('/expenses')}
             >
@@ -115,7 +115,7 @@ export const DashboardPage: React.FC = () => {
             <Button
               size="sm"
               variant="outline"
-              className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
+              className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm justify-center"
               leftIcon={<UserCheck className="w-4 h-4 text-emerald-600" />}
               onClick={() => navigate('/credits')}
             >
@@ -124,17 +124,17 @@ export const DashboardPage: React.FC = () => {
             <Button
               size="sm"
               variant="outline"
-              className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
+              className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm justify-center"
               leftIcon={<CalendarDays className="w-4 h-4 text-brand-600" />}
               onClick={() => navigate('/daybook')}
             >
-              Day Book (Sales)
+              Day Book
             </Button>
           </div>
         </div>
 
         {/* 4 Core Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Card 1: Primary Cash Counter Drawer */}
           <StatCard
             title="Cash Counter Drawer"
@@ -181,22 +181,22 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         {/* Net Business Financial Position Banner */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-slate-100 text-slate-700">
+            <div className="p-2.5 rounded-xl bg-slate-100 text-slate-700 shrink-0">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
               <span className="text-sm font-semibold text-slate-800">
                 Net Business Liquidity Position
               </span>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
                 Formula: Available Cash ({formatINR(liquidity.totalLiquidity)}) + You'll Get ({formatINR(receivables.totalOutstanding)}) - You'll Give ({formatINR(payables.totalOutstanding)}) - Card Debt ({formatINR(creditCards.totalDebt)})
               </p>
             </div>
           </div>
-          <div className="text-right sm:text-right">
-            <span className="font-mono text-2xl font-bold text-slate-900 tracking-tight">
+          <div className="text-left sm:text-right shrink-0">
+            <span className="font-mono text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
               {formatINR(netPosition)}
             </span>
             <p className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">
@@ -206,13 +206,13 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         {/* Middle Two-Column Grid: Accounts & Bank Liquidity + Monthly Expenses */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
           {/* Cash Counter Drawer & Reconciliation (7 cols) */}
-          <div className="lg:col-span-7 rounded-2xl bg-white border border-slate-200/80 p-6 shadow-sm flex flex-col justify-between">
+          <div className="lg:col-span-7 rounded-2xl bg-white border border-slate-200/80 p-4 sm:p-6 shadow-sm flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-100">
                 <div>
-                  <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-semibold text-slate-900 flex items-center gap-2">
                     <Wallet className="w-4 h-4 text-emerald-600" />
                     Cash Counter Drawer
                   </h3>
@@ -223,7 +223,7 @@ export const DashboardPage: React.FC = () => {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="text-xs text-slate-600 hover:text-slate-900"
+                  className="text-xs text-slate-600 hover:text-slate-900 shrink-0"
                   onClick={() => navigate('/daily-closing')}
                 >
                   Daily Closing
@@ -262,11 +262,11 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           {/* Monthly Expenses Breakdown (5 cols) */}
-          <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/80 p-6 shadow-sm flex flex-col justify-between">
+          <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/80 p-4 sm:p-6 shadow-sm flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-100">
                 <div>
-                  <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-semibold text-slate-900 flex items-center gap-2">
                     <Receipt className="w-4 h-4 text-rose-500" />
                     Monthly Expenses
                   </h3>
@@ -277,7 +277,7 @@ export const DashboardPage: React.FC = () => {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="text-xs text-slate-600 hover:text-slate-900"
+                  className="text-xs text-slate-600 hover:text-slate-900 shrink-0"
                   onClick={() => navigate('/expenses')}
                 >
                   View All
@@ -296,8 +296,8 @@ export const DashboardPage: React.FC = () => {
                     return (
                       <div key={cat._id} className="space-y-1">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="font-medium text-slate-700">{cat._id}</span>
-                          <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-700 truncate pr-2">{cat._id}</span>
+                          <div className="flex items-center gap-2 shrink-0">
                             <span className="font-mono font-semibold text-slate-900">
                               {formatINR(cat.totalAmount)}
                             </span>
@@ -327,10 +327,10 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         {/* Bottom Full-Width Grid: Recent Journal Transactions (12 cols) */}
-        <div className="rounded-2xl bg-white border border-slate-200/80 p-6 shadow-sm">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+        <div className="rounded-2xl bg-white border border-slate-200/80 p-4 sm:p-6 shadow-sm">
+          <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-100">
             <div>
-              <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+              <h3 className="text-sm sm:text-base font-semibold text-slate-900 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-indigo-600" />
                 Recent Journal Transactions
               </h3>
@@ -346,7 +346,7 @@ export const DashboardPage: React.FC = () => {
                 No recent transactions recorded yet.
               </div>
             ) : (
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs min-w-[520px]">
                 <thead>
                   <tr className="border-b border-slate-100 text-slate-400 font-medium">
                     <th className="py-2.5 px-3">Time</th>

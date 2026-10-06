@@ -194,13 +194,13 @@ export const DailyClosingPage: React.FC = () => {
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50/70">
-      <div className="max-w-6xl mx-auto px-4 py-6 sm:px-6 sm:py-8 space-y-6 pb-28">
+      <div className="max-w-6xl mx-auto px-3.5 py-4 sm:px-6 sm:py-8 space-y-4 sm:space-y-6 pb-28">
         {/* Top Header & Tab Navigation */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
             <div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <Scale className="w-6 h-6 text-blue-600" />
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <Scale className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
                 Day Opening & Closing
               </h1>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -209,11 +209,11 @@ export const DailyClosingPage: React.FC = () => {
             </div>
 
             {/* View Switcher Tabs */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1.5 rounded-xl border border-slate-200/60 self-start sm:self-auto">
+            <div className="grid grid-cols-2 sm:flex items-center gap-1 bg-slate-100 p-1.5 rounded-xl border border-slate-200/60 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={() => setActiveTab('RECONCILE')}
-                className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 sm:px-4 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
                   activeTab === 'RECONCILE'
                     ? 'bg-white text-slate-900 shadow-xs'
                     : 'text-slate-500 hover:text-slate-900'
@@ -226,7 +226,7 @@ export const DailyClosingPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setActiveTab('HISTORY')}
-                className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 sm:px-4 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
                   activeTab === 'HISTORY'
                     ? 'bg-white text-slate-900 shadow-xs'
                     : 'text-slate-500 hover:text-slate-900'
@@ -251,7 +251,7 @@ export const DailyClosingPage: React.FC = () => {
           /* Tab 1: Simple, Uncluttered Daily Reconcile View */
           <>
             {/* Date Navigator Bar */}
-            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 sm:p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 {/* Date Navigation */}
                 <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80">
@@ -313,9 +313,9 @@ export const DailyClosingPage: React.FC = () => {
             ) : (
               <>
                 {/* 2-Column Clean Layout: (1) System Ledgers vs (2) Counted Cash */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                   {/* Left Column: System Ledgers (Automatic) */}
-                  <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs flex flex-col justify-between space-y-5">
+                  <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-6 shadow-xs flex flex-col justify-between space-y-4 sm:space-y-5">
                     <div>
                       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                         <div className="flex items-center gap-2">
@@ -464,14 +464,14 @@ export const DailyClosingPage: React.FC = () => {
                   </div>
 
                   {/* Right Column: Actual Counted Cash (Manual Split-Up) */}
-                  <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs flex flex-col justify-between space-y-4">
+                  <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-6 shadow-xs flex flex-col justify-between space-y-4">
                     <div>
                       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                         <div className="flex items-center gap-2">
                           <span className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
                             <Building2 className="w-4 h-4" />
                           </span>
-                          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+                          <h3 className="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider">
                             2. Counted Cash & Banks (Manual)
                           </h3>
                         </div>
@@ -523,11 +523,11 @@ export const DailyClosingPage: React.FC = () => {
                               placeholder="Account / Cash name"
                               value={item.sourceName}
                               onChange={(e) => handleSplitUpChange(index, 'sourceName', e.target.value)}
-                              className="flex-1 px-3 py-1.5 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
+                              className="flex-1 min-w-0 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
                             />
 
-                            <div className="relative w-36">
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">
+                            <div className="relative w-28 sm:w-36 shrink-0">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">
                                 ₹
                               </span>
                               <input
@@ -537,14 +537,14 @@ export const DailyClosingPage: React.FC = () => {
                                 placeholder="0"
                                 value={item.amount === 0 ? '' : item.amount}
                                 onChange={(e) => handleSplitUpChange(index, 'amount', e.target.value)}
-                                className="w-full pl-6 pr-2.5 py-1.5 text-xs font-black font-mono text-slate-900 bg-white border border-slate-200 rounded-lg outline-none text-right focus:border-blue-500"
+                                className="w-full pl-5 pr-2 py-1.5 text-xs font-black font-mono text-slate-900 bg-white border border-slate-200 rounded-lg outline-none text-right focus:border-blue-500"
                               />
                             </div>
 
                             <button
                               type="button"
                               onClick={() => removeSplitUpRow(index)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer shrink-0"
                               title="Remove"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -581,12 +581,12 @@ export const DailyClosingPage: React.FC = () => {
                 </div>
 
                 {/* Bottom Reconciliation Status & Finalize Action */}
-                <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-6 shadow-xs space-y-4">
                   {/* Status Banner */}
                   {isBalanced ? (
-                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-4">
+                    <div className="p-3.5 sm:p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
                           <CheckCircle2 className="w-5 h-5" />
                         </div>
                         <div>
@@ -596,14 +596,14 @@ export const DailyClosingPage: React.FC = () => {
                           </p>
                         </div>
                       </div>
-                      <span className="text-xs font-black font-mono px-3 py-1 bg-emerald-200 text-emerald-900 rounded-lg">
+                      <span className="text-xs font-black font-mono px-3 py-1 bg-emerald-200 text-emerald-900 rounded-lg self-start sm:self-auto">
                         MATCHED
                       </span>
                     </div>
                   ) : (
-                    <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between gap-4">
+                    <div className="p-3.5 sm:p-4 rounded-xl bg-rose-50 border border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center flex-shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
                           <AlertTriangle className="w-5 h-5" />
                         </div>
                         <div>
@@ -619,7 +619,7 @@ export const DailyClosingPage: React.FC = () => {
                           </p>
                         </div>
                       </div>
-                      <span className="text-xs font-black font-mono px-3 py-1 bg-rose-200 text-rose-900 rounded-lg">
+                      <span className="text-xs font-black font-mono px-3 py-1 bg-rose-200 text-rose-900 rounded-lg self-start sm:self-auto">
                         UNBALANCED
                       </span>
                     </div>

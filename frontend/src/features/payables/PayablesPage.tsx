@@ -266,24 +266,24 @@ export const PayablesPage: React.FC = () => {
         </div>
 
         {/* Top Cumulative Summary Row */}
-        <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between text-sm">
+        <div className="px-3.5 sm:px-5 py-2.5 sm:py-3.5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between text-xs sm:text-sm gap-2">
           <div>
             <span className="text-slate-500 font-medium">You'll Pay:</span>{' '}
-            <span className="font-mono font-black text-rose-600 text-base">
+            <span className="font-mono font-black text-rose-600 text-sm sm:text-base">
               ₹{totalYouWillPay.toLocaleString('en-IN')} ↗
             </span>
           </div>
 
           <div>
             <span className="text-slate-500 font-medium">You'll Get:</span>{' '}
-            <span className="font-mono font-bold text-emerald-600 text-base">₹0 ↙</span>
+            <span className="font-mono font-bold text-emerald-600 text-sm sm:text-base">₹0 ↙</span>
           </div>
 
           <button
             onClick={() => window.print()}
-            className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50/80 hover:bg-blue-100 px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors"
+            className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50/80 hover:bg-blue-100 px-2.5 sm:px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap"
           >
-            <FileText className="w-4 h-4" /> View Report
+            <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> View Report
           </button>
         </div>
 
@@ -419,52 +419,62 @@ export const PayablesPage: React.FC = () => {
         {selectedPayable ? (
           <>
             {/* Top Supplier Bar */}
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-3.5">
-                <button
-                  onClick={() => setSelectedPayable(null)}
-                  className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg -ml-2"
-                >
-                  <ArrowLeft className="w-5 h-5" />
-                </button>
-                <div
-                  className={`w-11 h-11 rounded-full font-bold text-base flex items-center justify-center ${getAvatarColor(
-                    selectedPayable.partyName
-                  )}`}
-                >
-                  {selectedPayable.partyName.charAt(0).toUpperCase()}
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center justify-between sm:justify-start gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <button
+                    onClick={() => setSelectedPayable(null)}
+                    className="md:hidden p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg -ml-1 flex-shrink-0"
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                  </button>
+                  <div
+                    className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full font-bold text-sm sm:text-base flex items-center justify-center flex-shrink-0 ${getAvatarColor(
+                      selectedPayable.partyName
+                    )}`}
+                  >
+                    {selectedPayable.partyName.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-tight truncate">
+                      {selectedPayable.partyName}
+                    </h3>
+                    <p className="text-xs text-slate-400 font-mono mt-0.5 truncate">
+                      {selectedPayable.phone || 'No phone number'}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900 leading-tight">
-                    {selectedPayable.partyName}
-                  </h3>
-                  <p className="text-xs text-slate-400 font-mono mt-0.5">
-                    {selectedPayable.phone || 'No phone number'}
-                  </p>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-5">
+                {/* Mobile Report Button */}
                 <button
                   onClick={() => window.print()}
-                  className="text-xs font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-colors"
+                  className="sm:hidden text-xs font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors flex-shrink-0"
+                >
+                  <FileText className="w-3.5 h-3.5 text-slate-500" /> Report
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-5">
+                <button
+                  onClick={() => window.print()}
+                  className="hidden sm:flex text-xs font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3.5 py-2 rounded-lg items-center gap-1.5 transition-colors"
                 >
                   <FileText className="w-4 h-4 text-slate-500" /> Report
                 </button>
 
-                <div className="text-right border-l border-slate-200 pl-5">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                <div className="w-full sm:w-auto text-right bg-slate-50 sm:bg-transparent p-2.5 sm:p-0 rounded-xl sm:rounded-none sm:border-l sm:border-slate-200 sm:pl-5 flex sm:block items-center justify-between">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                     NET BALANCE:
                   </span>
-                  <span className="text-base font-black font-mono text-rose-600">
+                  <span className="text-sm sm:text-base font-black font-mono text-rose-600">
                     You'll Pay: ₹{selectedPayable.balancePending.toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Entries Table Header */}
-            <div className="px-6 py-3 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
+            {/* Entries Table Header (Desktop only) */}
+            <div className="hidden sm:flex px-6 py-3 bg-slate-50/80 border-b border-slate-200 items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
               <span>ENTRIES</span>
               <div className="flex items-center gap-16 pr-4">
                 <span className="w-20 text-right">YOU TOOK</span>
@@ -474,131 +484,244 @@ export const PayablesPage: React.FC = () => {
             </div>
 
             {/* Entries Stream */}
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 px-6">
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 px-4 sm:px-6 py-3 sm:py-0 space-y-3 sm:space-y-0">
               {selectedPayable.entries && selectedPayable.entries.length > 0 ? (
                 [...selectedPayable.entries].reverse().map((entry, idx) => {
                   const isDeleted = !!entry.isDeleted;
                   return (
-                    <div
-                      key={entry._id || idx}
-                      className={`py-3.5 flex items-center justify-between transition-colors ${
-                        isDeleted ? 'bg-rose-50/40 hover:bg-rose-50/60' : 'hover:bg-slate-50/50'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p
-                            className={`text-sm font-bold font-mono ${
-                              isDeleted
-                                ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
-                                : 'text-slate-800'
-                            }`}
-                          >
-                            {formatDateTime(entry.date)}
-                          </p>
-                          {entry.isReconciled && !isDeleted && (
-                            <span
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-300 uppercase tracking-wider shadow-2xs"
-                              title="Reconciled in Daily Closing. Editing and deleting are locked."
-                            >
-                              <Lock className="w-2.5 h-2.5 text-slate-400" />
-                              Reconciled
-                            </span>
-                          )}
-                          {isDeleted && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs">
-                              DELETED
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          Balance: ₹{selectedPayable.balancePending.toLocaleString('en-IN')}
-                        </p>
-                        <p
-                          className={`text-sm mt-1 font-medium ${
-                            isDeleted
-                              ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
-                              : 'text-slate-600'
-                          }`}
-                        >
-                          {entry.remarks ||
-                            (entry.type === PayableTransactionType.BORROWED
-                              ? 'Stock / Borrowed'
-                              : 'Payment')}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-8 sm:gap-14 pr-4">
-                        {/* YOU TOOK */}
-                        <div className="w-20 text-right font-mono font-bold text-sm">
-                          {entry.type === PayableTransactionType.BORROWED ? (
-                            <span
-                              className={
-                                isDeleted
-                                  ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
-                                  : 'text-rose-600'
-                              }
-                            >
-                              ₹{entry.amount.toLocaleString('en-IN')}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">-</span>
-                          )}
-                        </div>
-
-                        {/* YOU PAID */}
-                        <div className="w-20 text-right font-mono font-bold text-sm">
-                          {entry.type === PayableTransactionType.PAID ? (
-                            <span
-                              className={
-                                isDeleted
-                                  ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
-                                  : 'text-emerald-600'
-                              }
-                            >
-                              ₹{entry.amount.toLocaleString('en-IN')}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">-</span>
-                          )}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="w-16 text-center flex items-center justify-center gap-1">
-                          {!isDeleted ? (
-                            entry.isReconciled ? (
+                    <React.Fragment key={entry._id || idx}>
+                      {/* Mobile Card Layout (< sm) */}
+                      <div
+                        className={`sm:hidden p-3.5 rounded-xl border transition-colors space-y-2.5 ${
+                          isDeleted
+                            ? 'bg-rose-50/40 border-rose-200'
+                            : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span
-                                className="p-1.5 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed inline-flex items-center"
-                                title="Locked: Reconciled in Daily Closing. Cannot edit or delete."
+                                className={`text-xs font-bold font-mono ${
+                                  isDeleted
+                                    ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                    : 'text-slate-800'
+                                }`}
                               >
-                                <Lock className="w-4 h-4 text-slate-400" />
+                                {formatDateTime(entry.date)}
+                              </span>
+                              {entry.isReconciled && !isDeleted && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-300 uppercase tracking-wider shadow-2xs"
+                                  title="Reconciled in Daily Closing. Editing and deleting are locked."
+                                >
+                                  <Lock className="w-2.5 h-2.5 text-slate-400" />
+                                  Locked
+                                </span>
+                              )}
+                              {isDeleted && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs">
+                                  DELETED
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              Balance: ₹{selectedPayable.balancePending.toLocaleString('en-IN')}
+                            </p>
+                            <p
+                              className={`text-xs mt-1 font-medium ${
+                                isDeleted
+                                  ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                  : 'text-slate-600'
+                              }`}
+                            >
+                              {entry.remarks ||
+                                (entry.type === PayableTransactionType.BORROWED
+                                  ? 'Stock / Borrowed'
+                                  : 'Payment')}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {!isDeleted ? (
+                              entry.isReconciled ? (
+                                <span
+                                  className="p-1.5 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed inline-flex items-center"
+                                  title="Locked: Reconciled in Daily Closing. Cannot edit or delete."
+                                >
+                                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                                </span>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingEntry(entry)}
+                                    className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Edit this entry"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeletePayableEntry(entry)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Delete this entry"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                          <span className="text-xs font-bold">
+                            {entry.type === PayableTransactionType.BORROWED ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 uppercase">
+                                YOU TOOK
                               </span>
                             ) : (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingEntry(entry)}
-                                  className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Edit this entry"
-                                >
-                                  <Edit3 className="w-4 h-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeletePayableEntry(entry)}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Delete this entry"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </>
-                            )
-                          ) : (
-                            <span className="text-[11px] text-slate-300 font-semibold">—</span>
-                          )}
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+                                YOU PAID
+                              </span>
+                            )}
+                          </span>
+                          <span
+                            className={`font-mono font-black text-base ${
+                              isDeleted
+                                ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                : entry.type === PayableTransactionType.BORROWED
+                                ? 'text-rose-600'
+                                : 'text-emerald-600'
+                            }`}
+                          >
+                            ₹{entry.amount.toLocaleString('en-IN')}
+                          </span>
                         </div>
                       </div>
-                    </div>
+
+                      {/* Desktop Row Layout (>= sm) */}
+                      <div
+                        className={`hidden sm:flex py-3.5 items-center justify-between transition-colors ${
+                          isDeleted ? 'bg-rose-50/40 hover:bg-rose-50/60' : 'hover:bg-slate-50/50'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p
+                              className={`text-sm font-bold font-mono ${
+                                isDeleted
+                                  ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                  : 'text-slate-800'
+                              }`}
+                            >
+                              {formatDateTime(entry.date)}
+                            </p>
+                            {entry.isReconciled && !isDeleted && (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-300 uppercase tracking-wider shadow-2xs"
+                                title="Reconciled in Daily Closing. Editing and deleting are locked."
+                              >
+                                <Lock className="w-2.5 h-2.5 text-slate-400" />
+                                Reconciled
+                              </span>
+                            )}
+                            {isDeleted && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs">
+                                DELETED
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            Balance: ₹{selectedPayable.balancePending.toLocaleString('en-IN')}
+                          </p>
+                          <p
+                            className={`text-sm mt-1 font-medium ${
+                              isDeleted
+                                ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                : 'text-slate-600'
+                            }`}
+                          >
+                            {entry.remarks ||
+                              (entry.type === PayableTransactionType.BORROWED
+                                ? 'Stock / Borrowed'
+                                : 'Payment')}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-8 sm:gap-14 pr-4">
+                          {/* YOU TOOK */}
+                          <div className="w-20 text-right font-mono font-bold text-sm">
+                            {entry.type === PayableTransactionType.BORROWED ? (
+                              <span
+                                className={
+                                  isDeleted
+                                    ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                    : 'text-rose-600'
+                                }
+                              >
+                                ₹{entry.amount.toLocaleString('en-IN')}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300">-</span>
+                            )}
+                          </div>
+
+                          {/* YOU PAID */}
+                          <div className="w-20 text-right font-mono font-bold text-sm">
+                            {entry.type === PayableTransactionType.PAID ? (
+                              <span
+                                className={
+                                  isDeleted
+                                    ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                    : 'text-emerald-600'
+                                }
+                              >
+                                ₹{entry.amount.toLocaleString('en-IN')}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300">-</span>
+                            )}
+                          </div>
+
+                          {/* Actions */}
+                          <div className="w-16 text-center flex items-center justify-center gap-1">
+                            {!isDeleted ? (
+                              entry.isReconciled ? (
+                                <span
+                                  className="p-1.5 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed inline-flex items-center"
+                                  title="Locked: Reconciled in Daily Closing. Cannot edit or delete."
+                                >
+                                  <Lock className="w-4 h-4 text-slate-400" />
+                                </span>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingEntry(entry)}
+                                    className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Edit this entry"
+                                  >
+                                    <Edit3 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeletePayableEntry(entry)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Delete this entry"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )
+                            ) : (
+                              <span className="text-[11px] text-slate-300 font-semibold">—</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </React.Fragment>
                   );
                 })
               ) : (
@@ -608,16 +731,16 @@ export const PayablesPage: React.FC = () => {
               )}
             </div>
 
-            {/* Bottom Action Buttons (Exact image pastel styling) */}
-            <div className="p-4 border-t border-slate-200 bg-white">
-              <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto">
+            {/* Bottom Action Buttons */}
+            <div className="p-3 sm:p-4 border-t border-slate-200 bg-white">
+              <div className="grid grid-cols-2 gap-2.5 sm:gap-4 max-w-lg mx-auto">
                 <button
                   onClick={() => {
                     setAmount('');
                     setRemarks('');
                     setIsTookModalOpen(true);
                   }}
-                  className="py-3.5 px-4 rounded-xl bg-[#fee2e2] hover:bg-[#fecaca] text-[#dc2626] font-bold text-base transition-colors shadow-sm active:scale-[0.99] flex items-center justify-center gap-2"
+                  className="py-3 sm:py-3.5 px-3 sm:px-4 rounded-xl bg-[#fee2e2] hover:bg-[#fecaca] text-[#dc2626] font-bold text-sm sm:text-base transition-colors shadow-sm active:scale-[0.99] flex items-center justify-center gap-2"
                 >
                   You Took ₹
                 </button>
@@ -628,7 +751,7 @@ export const PayablesPage: React.FC = () => {
                     setRemarks('');
                     setIsPaidModalOpen(true);
                   }}
-                  className="py-3.5 px-4 rounded-xl bg-[#dcfce7] hover:bg-[#bbf7d0] text-[#16a34a] font-bold text-base transition-colors shadow-sm active:scale-[0.99] flex items-center justify-center gap-2"
+                  className="py-3 sm:py-3.5 px-3 sm:px-4 rounded-xl bg-[#dcfce7] hover:bg-[#bbf7d0] text-[#16a34a] font-bold text-sm sm:text-base transition-colors shadow-sm active:scale-[0.99] flex items-center justify-center gap-2"
                 >
                   You Paid ₹
                 </button>

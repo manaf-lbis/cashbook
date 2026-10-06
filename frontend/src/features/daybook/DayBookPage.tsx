@@ -18,6 +18,8 @@ import {
   Edit3,
   History,
   Trash2,
+  ArrowLeft,
+  ChevronDown,
 } from 'lucide-react';
 import { apiClient, formatINR, formatDateTime } from '../../api/client';
 import {
@@ -57,6 +59,7 @@ export const DayBookPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterType, setFilterType] = useState<'ALL' | 'WITH_SALES' | 'ZERO_SALES'>('ALL');
   const [sortBy, setSortBy] = useState<'SALES_HIGH' | 'NAME' | 'BILLS_HIGH'>('SALES_HIGH');
+  const [mobilePane, setMobilePane] = useState<'billers' | 'ledger'>('billers');
 
   // Modals
   const [isAddBillerOpen, setIsAddBillerOpen] = useState(false);
@@ -238,9 +241,9 @@ export const DayBookPage: React.FC = () => {
   return (
     <div className="h-full w-full flex overflow-hidden bg-white select-none">
       {/* ======================================================== */}
-      {/* 1. LEFT PANE: MONTHS RAIL (Future Locked, Current Active, Past View Only) */}
+      {/* 1. LEFT PANE: MONTHS RAIL (Desktop only, mobile uses dropdown) */}
       {/* ======================================================== */}
-      <div className="w-56 shrink-0 border-r border-slate-200 bg-slate-50/80 flex flex-col h-full overflow-hidden">
+      <div className="hidden lg:flex w-52 xl:w-56 shrink-0 border-r border-slate-200 bg-slate-50/80 flex-col h-full overflow-hidden">
         {/* Rail Header */}
         <div className="p-4 border-b border-slate-200 bg-white">
           <div className="flex items-center gap-2">
@@ -327,14 +330,42 @@ export const DayBookPage: React.FC = () => {
       </div>
 
       {/* ======================================================== */}
-      {/* 2. MIDDLE PANE: BILLING PERSONS LIST (Exactly like Khatabook Customers) */}
+      {/* 2. MIDDLE PANE: BILLING PERSONS LIST */}
       {/* ======================================================== */}
-      <div className="w-[390px] shrink-0 border-r border-slate-200 bg-white flex flex-col h-full overflow-hidden">
+      <div
+        className={`w-full md:w-[350px] lg:w-[380px] shrink-0 border-r border-slate-200 bg-white flex flex-col h-full overflow-hidden ${
+          mobilePane === 'ledger' ? 'hidden md:flex' : 'flex'
+        }`}
+      >
         {/* Month Summary Header Banner */}
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+        <div className="p-3.5 sm:p-4 border-b border-slate-100 bg-slate-50/50">
+          {/* Mobile Month Switcher for < lg */}
+          <div className="lg:hidden mb-2.5">
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+              Select Month Register
+            </label>
+            <div className="relative">
+              <select
+                value={selectedMonthKey}
+                onChange={(e) => {
+                  const m = months.find((item) => item.monthKey === e.target.value);
+                  if (m) handleSelectMonth(m);
+                }}
+                className="w-full bg-white border border-slate-200 text-xs font-bold text-slate-800 py-1.5 pl-3 pr-8 rounded-lg appearance-none cursor-pointer focus:outline-none focus:border-brand-500 shadow-2xs"
+              >
+                {months.map((m) => (
+                  <option key={m.monthKey} value={m.monthKey} disabled={m.status === 'LOCKED'}>
+                    {m.monthName} {m.year} {m.status === 'ACTIVE' ? '● Active' : m.status === 'LOCKED' ? '🔒 Locked' : '👁 View Only'}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          </div>
+
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-slate-900 text-base">
+              <h3 className="font-bold text-slate-900 text-sm sm:text-base">
                 {currentMonthObj?.label || 'Day Book'}
               </h3>
               {currentMonthObj?.status === 'ACTIVE' ? (
@@ -352,11 +383,11 @@ export const DayBookPage: React.FC = () => {
             </span>
           </div>
 
-          <div className="p-3 rounded-xl bg-white border border-slate-200/80 flex items-center justify-between">
+          <div className="p-2.5 sm:p-3 rounded-xl bg-white border border-slate-200/80 flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
               Total Month Sales
             </span>
-            <span className="font-mono font-bold text-emerald-600 text-lg">
+            <span className="font-mono font-bold text-emerald-600 text-base sm:text-lg">
               {formatINR(totalMonthSales)}
             </span>
           </div>
@@ -427,7 +458,10 @@ export const DayBookPage: React.FC = () => {
               return (
                 <div
                   key={b._id}
-                  onClick={() => setSelectedBillerId(b._id)}
+                  onClick={() => {
+                    setSelectedBillerId(b._id);
+                    setMobilePane('ledger');
+                  }}
                   className={`p-3.5 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-blue-50/70 border-l-4 border-blue-600'
@@ -490,22 +524,36 @@ export const DayBookPage: React.FC = () => {
       {/* ======================================================== */}
       {/* 3. RIGHT PANE: BILLER DETAIL LEDGER STREAM (Full Remaining Width) */}
       {/* ======================================================== */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#fafbfc]">
+      <div
+        className={`flex-1 flex flex-col h-full overflow-hidden bg-[#fafbfc] ${
+          mobilePane === 'billers' ? 'hidden md:flex' : 'flex'
+        }`}
+      >
         {selectedBiller ? (
           <>
             {/* Ledger Header */}
-            <div className="p-5 border-b border-slate-200 bg-white flex items-center justify-between">
-              <div className="flex items-center gap-3.5">
+            <div className="p-3.5 sm:p-5 border-b border-slate-200 bg-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMobilePane('billers')}
+                  className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg -ml-1 shrink-0 cursor-pointer"
+                  title="Back to Billers"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
                 <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-base shadow-sm ${getAvatarColor(
+                  className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-sm sm:text-base shadow-sm shrink-0 ${getAvatarColor(
                     selectedBiller.name
                   )}`}
                 >
                   {selectedBiller.name.charAt(0).toUpperCase()}
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-slate-900 text-lg">{selectedBiller.name}</h3>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-slate-900 text-base sm:text-lg leading-tight truncate">
+                      {selectedBiller.name}
+                    </h3>
                     {currentMonthObj?.status === 'ACTIVE' ? (
                       <Badge variant="emerald" size="sm">
                         ACTIVE REGISTER
@@ -516,24 +564,24 @@ export const DayBookPage: React.FC = () => {
                       </Badge>
                     )}
                   </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs text-slate-500 mt-0.5 truncate">
                     {selectedBiller.role} {selectedBiller.phone ? `• ${selectedBiller.phone}` : ''} • Period: {currentMonthObj?.label}
                   </p>
                 </div>
               </div>
 
-              <div className="text-right">
-                <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-                  Total Sales in {currentMonthObj?.shortLabel}
+              <div className="text-right shrink-0">
+                <span className="text-[10px] sm:text-xs uppercase font-bold text-slate-400 tracking-wider block">
+                  Total Sales
                 </span>
-                <p className="text-2xl font-bold font-mono text-emerald-600">
+                <p className="text-lg sm:text-2xl font-bold font-mono text-emerald-600">
                   {formatINR(selectedBiller.monthSales)}
                 </p>
               </div>
             </div>
 
-            {/* Entries Table Header */}
-            <div className="px-6 py-2.5 bg-slate-100/70 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+            {/* Entries Table Header (Desktop Only) */}
+            <div className="hidden sm:flex px-6 py-2.5 bg-slate-100/70 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider items-center justify-between">
               <span className="w-40">DATE & TIME</span>
               <span className="w-28">BILL #</span>
               <span className="w-36">PAYMENT / A/C</span>
@@ -542,7 +590,7 @@ export const DayBookPage: React.FC = () => {
             </div>
 
             {/* Entries Timeline / Stream */}
-            <div className="flex-1 overflow-y-auto px-6 divide-y divide-slate-100">
+            <div className="flex-1 overflow-y-auto p-3 sm:px-6 divide-y divide-slate-100 space-y-2 sm:space-y-0">
               {loadingEntries ? (
                 <div className="py-12 text-center text-xs text-slate-400">Loading sales records...</div>
               ) : entries.length === 0 ? (
@@ -553,7 +601,7 @@ export const DayBookPage: React.FC = () => {
                   <p className="text-sm font-semibold text-slate-700">No sales entries recorded for {selectedBiller.name}</p>
                   <p className="text-xs text-slate-400 mt-1">
                     {currentMonthObj?.status === 'ACTIVE'
-                      ? 'Click "+ Add Sales Entry" below to record a sale.'
+                      ? 'Click "+ Record Sale ₹" below to record a sale.'
                       : 'No records exist in this view-only archived month.'}
                   </p>
                 </div>
@@ -561,176 +609,294 @@ export const DayBookPage: React.FC = () => {
                 entries.map((entry) => {
                   const isDeleted = !!entry.isDeleted;
                   return (
-                    <div
-                      key={entry._id}
-                      className={`py-3.5 flex items-center justify-between transition-colors rounded-lg px-2 group ${
-                        isDeleted
-                          ? 'bg-rose-50/40 hover:bg-rose-50/60'
-                          : 'hover:bg-white/80'
-                      }`}
-                    >
-                      {/* Date */}
+                    <React.Fragment key={entry._id}>
+                      {/* 1. Mobile Card Layout (sm:hidden) */}
                       <div
-                        className={`w-40 text-xs font-mono ${
-                          isDeleted
-                            ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
-                            : 'text-slate-600'
+                        className={`sm:hidden p-3 rounded-xl border transition-colors flex flex-col gap-2 ${
+                          isDeleted ? 'bg-rose-50/40 border-rose-100' : 'bg-white border-slate-200/70 shadow-2xs'
                         }`}
                       >
-                        {formatDateTime(entry.date)}
-                      </div>
+                        {/* Top: Customer / Remarks / Bill # and Sale Amount */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {entry.billNumber && (
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                                    isDeleted ? 'bg-slate-100 text-slate-400 line-through' : 'bg-slate-100 text-slate-700 border-slate-200'
+                                  }`}
+                                >
+                                  #{entry.billNumber}
+                                </span>
+                              )}
+                              <span
+                                className={`text-xs font-bold truncate ${
+                                  isDeleted ? 'text-slate-400 line-through decoration-rose-500' : 'text-slate-900'
+                                }`}
+                              >
+                                {entry.customerName || entry.remarks || 'Daily Sale'}
+                              </span>
+                            </div>
+                            {entry.customerName && entry.remarks && (
+                              <p className="text-[11px] text-slate-500 truncate mt-0.5">{entry.remarks}</p>
+                            )}
+                          </div>
 
-                      {/* Bill # */}
-                      <div className="w-28 text-xs font-mono">
-                        {entry.billNumber ? (
-                          <span
-                            className={`px-2 py-0.5 rounded font-semibold border ${
-                              isDeleted
-                                ? 'bg-slate-100 text-slate-400 border-slate-200 line-through decoration-rose-500 decoration-2'
-                                : 'bg-slate-100 text-slate-700 border-slate-200/80'
-                            }`}
-                          >
-                            {entry.billNumber}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </div>
-
-                      {/* Account / Mode */}
-                      <div
-                        className={`w-32 text-xs ${
-                          isDeleted ? 'line-through decoration-rose-500 decoration-2 text-slate-400' : ''
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                          <Wallet
-                            className={`w-3.5 h-3.5 ${isDeleted ? 'text-slate-400' : 'text-emerald-600'}`}
-                          />
-                          <span className={isDeleted ? 'text-slate-400' : ''}>Cash Drawer</span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 truncate">
-                          Counter Inflow
-                        </p>
-                      </div>
-
-                      {/* Customer / Remarks + Edited & Deleted Indicators */}
-                      <div className="flex-1 text-xs pr-4 flex items-center gap-2 overflow-hidden">
-                        <div
-                          className={`truncate flex-1 ${
-                            isDeleted
-                              ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
-                              : 'text-slate-700'
-                          }`}
-                        >
-                          {entry.customerName && (
+                          <div className="text-right shrink-0">
                             <span
-                              className={`font-semibold mr-2 ${
-                                isDeleted ? 'text-slate-500' : 'text-slate-900'
+                              className={`font-mono font-bold text-base ${
+                                isDeleted
+                                  ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                  : 'text-emerald-600'
                               }`}
                             >
-                              {entry.customerName}
+                              +{formatINR(entry.amount)}
                             </span>
-                          )}
-                          <span className={isDeleted ? 'text-slate-400' : 'text-slate-500'}>
-                            {entry.remarks || 'Daily Sale'}
-                          </span>
+                          </div>
                         </div>
 
-                        {entry.isReconciled && !isDeleted && (
-                          <span
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-300 uppercase tracking-wider shadow-2xs shrink-0"
-                            title="Reconciled in Daily Closing. Editing and deleting are locked."
-                          >
-                            <Lock className="w-2.5 h-2.5 text-slate-400" />
-                            Reconciled
-                          </span>
-                        )}
+                        {/* Bottom: Date/Time, Mode, Badges & Action Buttons */}
+                        <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 text-slate-500">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono text-[11px] text-slate-500">{formatDateTime(entry.date)}</span>
+                            <span className="text-slate-300">•</span>
+                            <span className="inline-flex items-center gap-1 text-[11px] text-slate-600 font-medium">
+                              <Wallet className="w-3 h-3 text-emerald-600" /> Drawer
+                            </span>
 
-                        {isDeleted ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs shrink-0">
-                            DELETED
-                          </span>
-                        ) : (
-                          entry.isEdited && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setViewingLogEntry(entry);
-                              }}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold border border-amber-200 flex-shrink-0 cursor-pointer transition-colors shadow-2xs"
-                              title="Click to view edit history log"
-                            >
-                              <History className="w-3 h-3 text-amber-700" />
-                              Edited{' '}
-                              {entry.editLogs && entry.editLogs.length > 1
-                                ? `(${entry.editLogs.length})`
-                                : ''}
-                            </button>
-                          )
-                        )}
+                            {entry.isReconciled && !isDeleted && (
+                              <span
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-300 uppercase"
+                                title="Reconciled"
+                              >
+                                <Lock className="w-2.5 h-2.5" /> Reconciled
+                              </span>
+                            )}
+                            {isDeleted && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase">
+                                DELETED
+                              </span>
+                            )}
+                            {!isDeleted && entry.isEdited && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewingLogEntry(entry);
+                                }}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[9px] font-bold border border-amber-200 cursor-pointer"
+                              >
+                                <History className="w-2.5 h-2.5" /> Edited
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Actions */}
+                          {!isDeleted && currentMonthObj?.status === 'ACTIVE' && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              {entry.isReconciled ? (
+                                <span
+                                  className="p-1 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed inline-flex"
+                                  title="Locked: Reconciled"
+                                >
+                                  <Lock className="w-3.5 h-3.5" />
+                                </span>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingEntry(entry)}
+                                    className="p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Edit"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteEntry(entry)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Sale Amount & Actions */}
-                      <div className="w-36 text-right flex items-center justify-end gap-1.5 pr-1">
-                        <span
-                          className={`font-mono font-bold text-base ${
+                      {/* 2. Desktop Row Layout (hidden sm:flex) */}
+                      <div
+                        className={`hidden sm:flex py-3.5 items-center justify-between transition-colors rounded-lg px-2 group ${
+                          isDeleted
+                            ? 'bg-rose-50/40 hover:bg-rose-50/60'
+                            : 'hover:bg-white/80'
+                        }`}
+                      >
+                        {/* Date */}
+                        <div
+                          className={`w-40 text-xs font-mono ${
                             isDeleted
                               ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
-                              : 'text-emerald-600'
+                              : 'text-slate-600'
                           }`}
                         >
-                          +{formatINR(entry.amount)}
-                        </span>
+                          {formatDateTime(entry.date)}
+                        </div>
 
-                        {!isDeleted && currentMonthObj?.status === 'ACTIVE' && (
-                          entry.isReconciled ? (
+                        {/* Bill # */}
+                        <div className="w-28 text-xs font-mono">
+                          {entry.billNumber ? (
                             <span
-                              className="p-1.5 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed inline-flex items-center"
-                              title="Locked: Reconciled in Daily Closing. Cannot edit or delete."
+                              className={`px-2 py-0.5 rounded font-semibold border ${
+                                isDeleted
+                                  ? 'bg-slate-100 text-slate-400 border-slate-200 line-through decoration-rose-500 decoration-2'
+                                  : 'bg-slate-100 text-slate-700 border-slate-200/80'
+                              }`}
                             >
-                              <Lock className="w-4 h-4 text-slate-400" />
+                              {entry.billNumber}
                             </span>
                           ) : (
-                            <>
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </div>
+
+                        {/* Account / Mode */}
+                        <div
+                          className={`w-32 text-xs ${
+                            isDeleted ? 'line-through decoration-rose-500 decoration-2 text-slate-400' : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 font-medium text-slate-800">
+                            <Wallet
+                              className={`w-3.5 h-3.5 ${isDeleted ? 'text-slate-400' : 'text-emerald-600'}`}
+                            />
+                            <span className={isDeleted ? 'text-slate-400' : ''}>Cash Drawer</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 truncate">
+                            Counter Inflow
+                          </p>
+                        </div>
+
+                        {/* Customer / Remarks + Edited & Deleted Indicators */}
+                        <div className="flex-1 text-xs pr-4 flex items-center gap-2 overflow-hidden">
+                          <div
+                            className={`truncate flex-1 ${
+                              isDeleted
+                                ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                : 'text-slate-700'
+                            }`}
+                          >
+                            {entry.customerName && (
+                              <span
+                                className={`font-semibold mr-2 ${
+                                  isDeleted ? 'text-slate-500' : 'text-slate-900'
+                                }`}
+                              >
+                                {entry.customerName}
+                              </span>
+                            )}
+                            <span className={isDeleted ? 'text-slate-400' : 'text-slate-500'}>
+                              {entry.remarks || 'Daily Sale'}
+                            </span>
+                          </div>
+
+                          {entry.isReconciled && !isDeleted && (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-300 uppercase tracking-wider shadow-2xs shrink-0"
+                              title="Reconciled in Daily Closing. Editing and deleting are locked."
+                            >
+                              <Lock className="w-2.5 h-2.5 text-slate-400" />
+                              Reconciled
+                            </span>
+                          )}
+
+                          {isDeleted ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs shrink-0">
+                              DELETED
+                            </span>
+                          ) : (
+                            entry.isEdited && (
                               <button
                                 type="button"
-                                onClick={() => setEditingEntry(entry)}
-                                className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                                title="Edit this sale entry"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewingLogEntry(entry);
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold border border-amber-200 flex-shrink-0 cursor-pointer transition-colors shadow-2xs"
+                                title="Click to view edit history log"
                               >
-                                <Edit3 className="w-4 h-4" />
+                                <History className="w-3 h-3 text-amber-700" />
+                                Edited{' '}
+                                {entry.editLogs && entry.editLogs.length > 1
+                                  ? `(${entry.editLogs.length})`
+                                  : ''}
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteEntry(entry)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="Delete this sale entry"
+                            )
+                          )}
+                        </div>
+
+                        {/* Sale Amount & Actions */}
+                        <div className="w-36 text-right flex items-center justify-end gap-1.5 pr-1">
+                          <span
+                            className={`font-mono font-bold text-base ${
+                              isDeleted
+                                ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                : 'text-emerald-600'
+                            }`}
+                          >
+                            +{formatINR(entry.amount)}
+                          </span>
+
+                          {!isDeleted && currentMonthObj?.status === 'ACTIVE' && (
+                            entry.isReconciled ? (
+                              <span
+                                className="p-1.5 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed inline-flex items-center"
+                                title="Locked: Reconciled in Daily Closing. Cannot edit or delete."
                               >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
-                          )
-                        )}
+                                <Lock className="w-4 h-4 text-slate-400" />
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingEntry(entry)}
+                                  className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Edit this sale entry"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteEntry(entry)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Delete this sale entry"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    </React.Fragment>
                   );
                 })
               )}
             </div>
 
             {/* Sticky Bottom Action Bar */}
-            <div className="p-4 border-t border-slate-200 bg-white">
+            <div className="p-3 sm:p-4 border-t border-slate-200 bg-white">
               {currentMonthObj?.status === 'ACTIVE' ? (
-                <div className="flex items-center justify-between gap-4">
-                  <div className="text-xs text-slate-500">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                  <div className="text-xs text-slate-500 hidden sm:block">
                     Record any sale transaction under <strong className="text-slate-800">{selectedBiller.name}</strong> or switch biller.
                   </div>
                   <Button
                     size="md"
                     variant="success"
-                    className="px-6 shadow-sm font-bold"
+                    className="w-full sm:w-auto px-6 shadow-sm font-bold"
                     leftIcon={<Plus className="w-4 h-4" />}
                     onClick={() => setIsAddEntryOpen(true)}
                   >

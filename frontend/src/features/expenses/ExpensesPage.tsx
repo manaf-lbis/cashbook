@@ -338,60 +338,60 @@ export const ExpensesPage: React.FC = () => {
         {selectedCategory ? (
           <>
             {/* Top Detail Header */}
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-3.5">
+            <div className="px-3.5 py-3 sm:px-6 sm:py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-3">
                 <button
                   onClick={() => setSelectedCategory(null)}
-                  className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg -ml-2 cursor-pointer"
+                  className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg -ml-1 cursor-pointer"
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </button>
                 <div
-                  className={`w-11 h-11 rounded-full font-bold text-base flex items-center justify-center border shadow-2xs ${getAvatarColor(
+                  className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full font-bold text-sm sm:text-base flex items-center justify-center border shadow-2xs shrink-0 ${getAvatarColor(
                     selectedCategory.name
                   )}`}
                 >
                   {selectedCategory.name.charAt(0).toUpperCase()}
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900 leading-tight">
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-tight truncate">
                     {selectedCategory.name}
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <p className="text-xs text-slate-400 mt-0.5 truncate">
                     {expenses.length} {expenses.length === 1 ? 'expense' : 'expenses'} recorded • Main Expense Head
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-5">
+              <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-5 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                 <button
                   onClick={() => window.print()}
-                  className="text-xs font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="text-xs font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <FileText className="w-4 h-4 text-slate-500" /> Report
+                  <FileText className="w-3.5 h-3.5 text-slate-500" /> Report
                 </button>
 
-                <div className="text-right border-l border-slate-200 pl-5">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                <div className="text-right sm:border-l sm:border-slate-200 sm:pl-5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                     TOTAL SPENT:
                   </span>
-                  <span className="text-base font-black font-mono text-rose-600">
-                    You've Paid: ₹{selectedCategory.totalSpent.toLocaleString('en-IN')}
+                  <span className="text-sm sm:text-base font-black font-mono text-rose-600">
+                    ₹{selectedCategory.totalSpent.toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Entries Table Header */}
-            <div className="px-6 py-3 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
+            {/* Entries Table Header (Desktop Only) */}
+            <div className="hidden sm:flex px-6 py-3 bg-slate-50/80 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider items-center justify-between">
               <span className="w-44">DATE & TIME</span>
               <span className="flex-1">EXPENSE TITLE</span>
               <span className="w-32 text-right pr-4">AMOUNT</span>
-              <span className="w-12 text-center">EDIT</span>
+              <span className="w-16 text-center">EDIT</span>
             </div>
 
             {/* Entries Stream */}
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 px-6">
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-3 sm:px-6 space-y-2 sm:space-y-0">
               {loadingEntries ? (
                 <div className="py-20 text-center text-xs text-slate-400">Loading expenses...</div>
               ) : expenses.length === 0 ? (
@@ -410,107 +410,188 @@ export const ExpensesPage: React.FC = () => {
                 expenses.map((exp) => {
                   const isDeleted = !!exp.isDeleted;
                   return (
-                    <div
-                      key={exp._id}
-                      className={`py-3.5 flex items-center justify-between transition-colors ${
-                        isDeleted ? 'bg-rose-50/40 hover:bg-rose-50/60' : 'hover:bg-slate-50/60'
-                      }`}
-                    >
-                      {/* Date */}
+                    <React.Fragment key={exp._id}>
+                      {/* 1. Mobile Card (sm:hidden) */}
                       <div
-                        className={`w-44 text-xs font-mono ${
-                          isDeleted
-                            ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
-                            : 'text-slate-600'
+                        className={`sm:hidden p-3 rounded-xl border transition-colors flex flex-col gap-2 ${
+                          isDeleted ? 'bg-rose-50/40 border-rose-100' : 'bg-white border-slate-200/70 shadow-2xs'
                         }`}
                       >
-                        {formatDateTime(exp.date)}
-                      </div>
-
-                      {/* Title */}
-                      <div
-                        className={`flex-1 text-sm font-bold pr-4 flex items-center gap-2 ${
-                          isDeleted ? 'text-slate-400' : 'text-slate-800'
-                        }`}
-                      >
-                        <span className={isDeleted ? 'line-through decoration-rose-500 decoration-2' : ''}>
-                          {exp.title}
-                        </span>
-
-                        {exp.isReconciled && !isDeleted && (
+                        {/* Top: Title & Amount */}
+                        <div className="flex items-start justify-between gap-2">
                           <span
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-300 uppercase tracking-wider shadow-2xs"
-                            title="Reconciled in Daily Closing. Editing and deleting are locked."
+                            className={`text-xs font-bold flex-1 ${
+                              isDeleted ? 'text-slate-400 line-through decoration-rose-500' : 'text-slate-900'
+                            }`}
                           >
-                            <Lock className="w-2.5 h-2.5 text-slate-400" />
-                            Reconciled
+                            {exp.title}
                           </span>
-                        )}
+                          <span
+                            className={`font-mono font-bold text-base shrink-0 ${
+                              isDeleted
+                                ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                : 'text-rose-600'
+                            }`}
+                          >
+                            -₹{exp.amount.toLocaleString('en-IN')}
+                          </span>
+                        </div>
 
-                        {isDeleted && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs">
-                            DELETED
-                          </span>
-                        )}
+                        {/* Bottom: Date/Time, Badges & Actions */}
+                        <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-100 text-slate-500">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono text-[11px] text-slate-500">{formatDateTime(exp.date)}</span>
+                            {exp.isReconciled && !isDeleted && (
+                              <span
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-300 uppercase"
+                                title="Reconciled"
+                              >
+                                <Lock className="w-2.5 h-2.5" /> Reconciled
+                              </span>
+                            )}
+                            {isDeleted && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase">
+                                DELETED
+                              </span>
+                            )}
+                          </div>
+
+                          {!isDeleted && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              {exp.isReconciled ? (
+                                <span
+                                  className="p-1 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed inline-flex"
+                                  title="Locked: Reconciled"
+                                >
+                                  <Lock className="w-3.5 h-3.5" />
+                                </span>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingExpense(exp)}
+                                    className="p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Edit"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteExpense(exp)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Amount */}
-                      <div className="w-32 text-right pr-4">
-                        <span
-                          className={`font-mono font-bold text-base ${
+                      {/* 2. Desktop Row (hidden sm:flex) */}
+                      <div
+                        className={`hidden sm:flex py-3.5 items-center justify-between transition-colors ${
+                          isDeleted ? 'bg-rose-50/40 hover:bg-rose-50/60' : 'hover:bg-slate-50/60'
+                        }`}
+                      >
+                        {/* Date */}
+                        <div
+                          className={`w-44 text-xs font-mono ${
                             isDeleted
                               ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
-                              : 'text-rose-600'
+                              : 'text-slate-600'
                           }`}
                         >
-                          -₹{exp.amount.toLocaleString('en-IN')}
-                        </span>
-                      </div>
+                          {formatDateTime(exp.date)}
+                        </div>
 
-                      {/* Actions */}
-                      <div className="w-20 text-center flex items-center justify-center gap-1">
-                        {!isDeleted ? (
-                          exp.isReconciled ? (
+                        {/* Title */}
+                        <div
+                          className={`flex-1 text-sm font-bold pr-4 flex items-center gap-2 ${
+                            isDeleted ? 'text-slate-400' : 'text-slate-800'
+                          }`}
+                        >
+                          <span className={isDeleted ? 'line-through decoration-rose-500 decoration-2' : ''}>
+                            {exp.title}
+                          </span>
+
+                          {exp.isReconciled && !isDeleted && (
                             <span
-                              className="p-1.5 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed inline-flex items-center"
-                              title="Locked: Reconciled in Daily Closing. Cannot edit or delete."
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-300 uppercase tracking-wider shadow-2xs"
+                              title="Reconciled in Daily Closing. Editing and deleting are locked."
                             >
-                              <Lock className="w-4 h-4 text-slate-400" />
+                              <Lock className="w-2.5 h-2.5 text-slate-400" />
+                              Reconciled
                             </span>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => setEditingExpense(exp)}
-                                className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                                title="Edit expense"
+                          )}
+
+                          {isDeleted && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs">
+                              DELETED
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Amount */}
+                        <div className="w-32 text-right pr-4">
+                          <span
+                            className={`font-mono font-bold text-base ${
+                              isDeleted
+                                ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                : 'text-rose-600'
+                            }`}
+                          >
+                            -₹{exp.amount.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="w-16 text-center flex items-center justify-center gap-1">
+                          {!isDeleted ? (
+                            exp.isReconciled ? (
+                              <span
+                                className="p-1.5 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed inline-flex items-center"
+                                title="Locked: Reconciled in Daily Closing. Cannot edit or delete."
                               >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteExpense(exp)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="Delete expense"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
-                          )
-                        ) : (
-                          <span className="text-[11px] text-slate-300 font-semibold">—</span>
-                        )}
+                                <Lock className="w-4 h-4 text-slate-400" />
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingExpense(exp)}
+                                  className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Edit this expense"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteExpense(exp)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Delete this expense"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
+                    </React.Fragment>
                   );
                 })
               )}
             </div>
 
             {/* Bottom Action Bar: + Add Expense */}
-            <div className="p-4 border-t border-slate-200 bg-white">
+            <div className="p-3 sm:p-4 border-t border-slate-200 bg-white">
               <div className="max-w-md mx-auto">
                 <button
                   onClick={() => setIsAddExpenseOpen(true)}
-                  className="w-full py-3.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-base transition-colors shadow-sm active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-3 sm:py-3.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm sm:text-base transition-colors shadow-sm active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Plus className="w-5 h-5" /> Add Expense in {selectedCategory.name} ₹
                 </button>

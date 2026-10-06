@@ -83,11 +83,11 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
   const netVariance = metrics?.totalNetVariance || 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* 1. Hero Audit Summary Cards: Closings Health vs Period Sales vs Net Variance */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
         {/* Card 1: Reconciled Days */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between">
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -97,7 +97,7 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
                 <CheckCircle2 className="w-5 h-5" />
               </span>
             </div>
-            <div className="text-2xl font-black font-mono text-slate-900 mt-1">
+            <div className="text-xl sm:text-2xl font-black font-mono text-slate-900 mt-1">
               {metrics?.closedCount || 0} / {metrics?.totalDays || 0} Days Closed
             </div>
             <p className="text-xs text-slate-500 mt-2 leading-relaxed">
@@ -116,7 +116,7 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
         </div>
 
         {/* Card 2: Period Total Sales & Expenses */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between">
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-xs font-bold uppercase tracking-wider text-blue-600">
@@ -126,7 +126,7 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
                 <TrendingUp className="w-5 h-5" />
               </span>
             </div>
-            <div className="text-2xl font-black font-mono text-slate-900 mt-1">
+            <div className="text-xl sm:text-2xl font-black font-mono text-slate-900 mt-1">
               ₹{(metrics?.totalPeriodSales || 0).toLocaleString('en-IN')}
             </div>
             <p className="text-xs text-slate-500 mt-2 leading-relaxed">
@@ -143,7 +143,7 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
 
         {/* Card 3: Net Cash Audit Variance */}
         <div
-          className={`rounded-2xl p-5 shadow-xs flex flex-col justify-between text-white ${
+          className={`rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between text-white ${
             netVariance === 0
               ? 'bg-gradient-to-br from-emerald-950 to-slate-900'
               : netVariance < 0
@@ -355,12 +355,12 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
                 }`}
               >
                 {/* Main Card Header / Summary Row */}
-                <div className="p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="p-3.5 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
                   {/* Left: Date & Status Badge */}
-                  <div className="flex items-start sm:items-center gap-3.5">
+                  <div className="flex items-start sm:items-center gap-3">
                     {/* Status Icon */}
                     <div
-                      className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center shrink-0 ${
                         isBalanced
                           ? 'bg-emerald-50 text-emerald-600'
                           : isNotClosed
@@ -371,19 +371,19 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
                       }`}
                     >
                       {isBalanced ? (
-                        <CheckCircle2 className="w-6 h-6" />
+                        <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
                       ) : isNotClosed ? (
-                        <AlertCircle className="w-6 h-6" />
+                        <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6" />
                       ) : isOpening ? (
-                        <Sparkles className="w-6 h-6" />
+                        <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
                       ) : (
-                        <AlertTriangle className="w-6 h-6" />
+                        <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6" />
                       )}
                     </div>
 
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-base font-black text-slate-900 font-mono">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <span className="text-sm sm:text-base font-black text-slate-900 font-mono">
                           {formatDate(item.date)}
                         </span>
 
@@ -395,33 +395,33 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
 
                         {/* Status Tag */}
                         {isBalanced && (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800">
                             CLOSED (BALANCED)
                           </span>
                         )}
                         {item.status === 'CLOSED_DISCREPANCY' && (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800">
                             CLOSED (DISCREPANCY)
                           </span>
                         )}
                         {isNotClosed && (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200">
                             NOT CLOSED (MISSED)
                           </span>
                         )}
                         {item.status === 'OPENING' && !isClosed && (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-800">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-800">
                             REGISTER OPEN
                           </span>
                         )}
                         {item.status === 'OPENING_ONLY' && (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600">
                             NO ACTIVITY (UNCLOSED)
                           </span>
                         )}
                       </div>
 
-                      <p className="text-xs text-slate-500 mt-1 font-medium">
+                      <p className="text-xs text-slate-500 mt-1 font-medium leading-relaxed">
                         Opening Cash: <strong className="text-slate-800 font-mono">₹{item.openingBalance.toLocaleString('en-IN')}</strong>
                         {item.dayBookSales > 0 && ` • Sales: +₹${item.dayBookSales.toLocaleString('en-IN')}`}
                         {item.customerNet !== 0 && (
@@ -436,9 +436,9 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
                   </div>
 
                   {/* Middle: Financial Pillars (Expected vs Actual Counted vs Variance) */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 py-2 lg:py-0 border-y lg:border-y-0 border-slate-100">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 py-2 lg:py-0 border-y lg:border-y-0 border-slate-100">
                     {/* Pillar 1: Expected Closing Cash */}
-                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 min-w-[130px]">
+                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 min-w-0">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                         Expected Closing
                       </span>
@@ -449,7 +449,7 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
                     </div>
 
                     {/* Pillar 2: Actual Counted Cash */}
-                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 min-w-[130px]">
+                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 min-w-0">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                         Actual Counted
                       </span>
@@ -479,7 +479,7 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
 
                     {/* Pillar 3: Cash Variance */}
                     <div
-                      className={`p-2.5 rounded-xl border min-w-[140px] col-span-2 sm:col-span-1 ${
+                      className={`p-2.5 rounded-xl border min-w-0 col-span-2 sm:col-span-1 ${
                         item.isSaved && item.variance !== null
                           ? item.variance === 0
                             ? 'bg-emerald-50/70 border-emerald-200'
@@ -547,13 +547,13 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
                   </div>
 
                   {/* Right: Actions */}
-                  <div className="flex items-center justify-between lg:justify-end gap-2.5">
+                  <div className="flex items-center justify-between lg:justify-end gap-2.5 w-full lg:w-auto">
                     {/* Expand Split-up toggle (if closing exists) */}
                     {isClosed && item.manualSplitUps && item.manualSplitUps.length > 0 && (
                       <button
                         type="button"
                         onClick={() => setExpandedDate(isExpanded ? null : item.date)}
-                        className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                        className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1 shrink-0"
                       >
                         {isExpanded ? 'Hide Count' : 'View Count'}
                         {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -566,7 +566,7 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
                       size="sm"
                       onClick={() => onSelectDate(item.date)}
                       rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
-                      className="text-xs font-bold"
+                      className="text-xs font-bold flex-1 lg:flex-none justify-center"
                     >
                       {isNotClosed ? 'Close Day Now' : isToday ? 'Open Register' : 'Review Register'}
                     </Button>
@@ -575,7 +575,7 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
 
                 {/* Expanded Count Details Drawer */}
                 {isExpanded && item.manualSplitUps && (
-                  <div className="px-5 pb-5 pt-3 bg-slate-50 border-t border-slate-100 space-y-3">
+                  <div className="px-3.5 pb-4 pt-3 sm:px-5 sm:pb-5 bg-slate-50 border-t border-slate-100 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
                         Physical Cash & Bank Split-Up Counted on {formatDate(item.date)}:
