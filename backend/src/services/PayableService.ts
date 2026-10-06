@@ -20,21 +20,24 @@ export class PayableService {
     partyName: string;
     phone?: string;
     amount: number;
-    accountId: string;
+    accountId?: string;
     date?: Date;
     remarks?: string;
     dueDate?: Date;
   }) {
     if (dto.amount <= 0) throw ApiError.badRequest('Amount must be greater than zero');
 
-    const account = await this.accountRepo.findById(dto.accountId);
-    if (!account) throw ApiError.notFound('Account not found');
+    let account = dto.accountId ? await this.accountRepo.findById(dto.accountId) : null;
+    if (!account) {
+      account = (await this.accountRepo.getCashAccount()) || (await this.accountRepo.findOne({ isActive: true }));
+    }
+    if (!account) throw ApiError.notFound('Cash drawer account not found');
 
     const txDate = dto.date || new Date();
     const dateStr = dayjs(txDate).format('YYYY-MM-DD');
 
-    // 1. Credit into our account (we received money in cash or bank)
-    const updatedAccount = await this.accountRepo.adjustBalance(dto.accountId, dto.amount);
+    // 1. Credit into our account (we received money in cash drawer)
+    const updatedAccount = await this.accountRepo.adjustBalance(account._id.toString(), dto.amount);
 
     // 2. Find or create creditor record
     let payable = await this.payableRepo.findOne({
@@ -89,7 +92,7 @@ export class PayableService {
     payableId: string,
     dto: {
       amount: number;
-      accountId: string;
+      accountId?: string;
       date?: Date;
       remarks?: string;
     }
@@ -99,8 +102,11 @@ export class PayableService {
     const payable = await this.payableRepo.findById(payableId);
     if (!payable) throw ApiError.notFound('Pending record not found');
 
-    const account = await this.accountRepo.findById(dto.accountId);
-    if (!account) throw ApiError.notFound('Payment account not found');
+    let account = dto.accountId ? await this.accountRepo.findById(dto.accountId) : null;
+    if (!account) {
+      account = (await this.accountRepo.getCashAccount()) || (await this.accountRepo.findOne({ isActive: true }));
+    }
+    if (!account) throw ApiError.notFound('Cash drawer account not found');
 
     if (account.balance < dto.amount) {
       throw ApiError.badRequest(`Insufficient funds in ${account.name}. Available: ₹${account.balance}`);
@@ -109,8 +115,8 @@ export class PayableService {
     const txDate = dto.date || new Date();
     const dateStr = dayjs(txDate).format('YYYY-MM-DD');
 
-    // 1. Deduct from our account (paying them back)
-    const updatedAccount = await this.accountRepo.adjustBalance(dto.accountId, -dto.amount);
+    // 1. Deduct from our account (paying them back from cash drawer)
+    const updatedAccount = await this.accountRepo.adjustBalance(account._id.toString(), -dto.amount);
 
     // 2. Update creditor record
     const newEntry = {

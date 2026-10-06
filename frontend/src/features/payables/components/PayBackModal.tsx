@@ -12,7 +12,7 @@ interface PayBackModalProps {
   isOpen: boolean;
   onClose: () => void;
   payable: IPayable | null;
-  accounts: IAccount[];
+  accounts?: IAccount[];
   onSuccess: () => void;
 }
 
@@ -20,7 +20,7 @@ export const PayBackModal: React.FC<PayBackModalProps> = ({
   isOpen,
   onClose,
   payable,
-  accounts,
+  accounts = [],
   onSuccess,
 }) => {
   const { showToast } = useToast();
@@ -45,20 +45,15 @@ export const PayBackModal: React.FC<PayBackModalProps> = ({
       showToast('Please enter a valid amount', 'error');
       return;
     }
-    if (!accountId) {
-      showToast('Please select an account to pay from', 'error');
-      return;
-    }
 
     try {
       setLoading(true);
       await apiClient.post(`/payables/${payable._id}/payback`, {
         amount: numAmount,
-        accountId,
         remarks: remarks.trim() || undefined,
       });
 
-      showToast(`Repayment of ₹${numAmount} paid to ${payable.partyName}`, 'success');
+      showToast(`Repayment of ₹${numAmount} settled from Cash Drawer`, 'success');
       await refreshAccounts();
       onSuccess();
       onClose();
@@ -71,11 +66,6 @@ export const PayBackModal: React.FC<PayBackModalProps> = ({
       setLoading(false);
     }
   };
-
-  const accountOptions = accounts.map((acc) => ({
-    value: acc._id,
-    label: `${acc.name} (${acc.type}) - Balance: ₹${acc.balance.toLocaleString('en-IN')}`,
-  }));
 
   return (
     <Modal
@@ -104,13 +94,6 @@ export const PayBackModal: React.FC<PayBackModalProps> = ({
           max={payable.balancePending}
           step="any"
           autoFocus
-        />
-
-        <Select
-          label="Pay From (Account)"
-          value={accountId}
-          onChange={(e) => setAccountId(e.target.value)}
-          options={accountOptions}
         />
 
         <Input

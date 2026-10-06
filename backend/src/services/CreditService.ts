@@ -20,25 +20,24 @@ export class CreditService {
     partyName: string;
     phone?: string;
     amount: number;
-    accountId: string;
+    accountId?: string;
     date?: Date;
     remarks?: string;
     dueDate?: Date;
   }) {
     if (dto.amount <= 0) throw ApiError.badRequest('Credit amount must be greater than zero');
 
-    const account = await this.accountRepo.findById(dto.accountId);
-    if (!account) throw ApiError.notFound('Account not found');
-
-    if (account.balance < dto.amount) {
-      throw ApiError.badRequest(`Insufficient funds in ${account.name}. Available: ₹${account.balance}`);
+    let account = dto.accountId ? await this.accountRepo.findById(dto.accountId) : null;
+    if (!account) {
+      account = (await this.accountRepo.getCashAccount()) || (await this.accountRepo.findOne({ isActive: true }));
     }
+    if (!account) throw ApiError.notFound('Cash drawer account not found');
 
     const txDate = dto.date || new Date();
     const dateStr = dayjs(txDate).format('YYYY-MM-DD');
 
-    // 1. Deduct from account (cash or bank)
-    const updatedAccount = await this.accountRepo.adjustBalance(dto.accountId, -dto.amount);
+    // 1. Deduct from account (cash drawer)
+    const updatedAccount = await this.accountRepo.adjustBalance(account._id.toString(), -dto.amount);
 
     // 2. Find or create party credit record
     let credit = await this.creditRepo.findOne({
@@ -93,7 +92,7 @@ export class CreditService {
     creditId: string,
     dto: {
       amount: number;
-      accountId: string;
+      accountId?: string;
       date?: Date;
       remarks?: string;
     }
@@ -103,14 +102,17 @@ export class CreditService {
     const credit = await this.creditRepo.findById(creditId);
     if (!credit) throw ApiError.notFound('Credit record not found');
 
-    const account = await this.accountRepo.findById(dto.accountId);
-    if (!account) throw ApiError.notFound('Account not found');
+    let account = dto.accountId ? await this.accountRepo.findById(dto.accountId) : null;
+    if (!account) {
+      account = (await this.accountRepo.getCashAccount()) || (await this.accountRepo.findOne({ isActive: true }));
+    }
+    if (!account) throw ApiError.notFound('Cash drawer account not found');
 
     const txDate = dto.date || new Date();
     const dateStr = dayjs(txDate).format('YYYY-MM-DD');
 
-    // 1. Credit the account (money received into cash or bank)
-    const updatedAccount = await this.accountRepo.adjustBalance(dto.accountId, dto.amount);
+    // 1. Credit the account (money received into cash drawer)
+    const updatedAccount = await this.accountRepo.adjustBalance(account._id.toString(), dto.amount);
 
     // 2. Update party credit record
     const newEntry = {

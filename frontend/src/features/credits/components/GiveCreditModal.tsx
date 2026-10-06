@@ -11,7 +11,7 @@ import { useAccounts } from '../../../context/AccountContext';
 interface GiveCreditModalProps {
   isOpen: boolean;
   onClose: () => void;
-  accounts: IAccount[];
+  accounts?: IAccount[];
   initialPartyName?: string;
   onSuccess: () => void;
 }
@@ -19,7 +19,7 @@ interface GiveCreditModalProps {
 export const GiveCreditModal: React.FC<GiveCreditModalProps> = ({
   isOpen,
   onClose,
-  accounts,
+  accounts = [],
   initialPartyName = '',
   onSuccess,
 }) => {
@@ -47,10 +47,6 @@ export const GiveCreditModal: React.FC<GiveCreditModalProps> = ({
       showToast('Please enter a valid credit amount', 'error');
       return;
     }
-    if (!accountId) {
-      showToast('Please select a disbursement account', 'error');
-      return;
-    }
 
     try {
       setLoading(true);
@@ -58,12 +54,11 @@ export const GiveCreditModal: React.FC<GiveCreditModalProps> = ({
         partyName: partyName.trim(),
         phone: phone.trim() || undefined,
         amount: numAmount,
-        accountId,
         dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
         remarks: remarks.trim() || undefined,
       });
 
-      showToast(`Credit of ₹${numAmount} given to ${partyName}`, 'success');
+      showToast(`Credit of ₹${numAmount} given from Cash Drawer to ${partyName}`, 'success');
       await refreshAccounts();
       onSuccess();
       onClose();
@@ -78,11 +73,6 @@ export const GiveCreditModal: React.FC<GiveCreditModalProps> = ({
       setLoading(false);
     }
   };
-
-  const accountOptions = accounts.map((acc) => ({
-    value: acc._id,
-    label: `${acc.name} (${acc.type}) - Balance: ₹${acc.balance.toLocaleString('en-IN')}`,
-  }));
 
   return (
     <Modal
@@ -121,13 +111,6 @@ export const GiveCreditModal: React.FC<GiveCreditModalProps> = ({
             step="any"
           />
         </div>
-
-        <Select
-          label="Disbursed From (Account)"
-          value={accountId}
-          onChange={(e) => setAccountId(e.target.value)}
-          options={accountOptions}
-        />
 
         <Input
           label="Expected Return Date (Optional)"

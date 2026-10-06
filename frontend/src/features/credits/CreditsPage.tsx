@@ -119,10 +119,6 @@ export const CreditsPage: React.FC = () => {
       return;
     }
     const numAmount = initialAmount ? parseFloat(initialAmount) : 0;
-    if (numAmount > 0 && !accountId) {
-      showToast('Please select payment account', 'error');
-      return;
-    }
 
     try {
       setSubmitting(true);
@@ -130,7 +126,6 @@ export const CreditsPage: React.FC = () => {
         partyName: newCustName.trim(),
         phone: newCustPhone.trim() || undefined,
         amount: numAmount > 0 ? numAmount : 0.01,
-        accountId: numAmount > 0 ? accountId : accounts[0]?._id,
         remarks: numAmount > 0 ? 'Opening credit balance' : 'Customer account created',
       });
 
@@ -167,11 +162,10 @@ export const CreditsPage: React.FC = () => {
         partyName: selectedCredit.partyName,
         phone: selectedCredit.phone,
         amount: num,
-        accountId,
-        remarks: remarks.trim() || 'Credit given',
+        remarks: remarks.trim() || 'Credit given from Cash Drawer',
       });
 
-      showToast(`₹${num} recorded under You Gave`, 'success');
+      showToast(`₹${num} recorded under You Gave (from Drawer)`, 'success');
       await refreshAccounts();
       await fetchCredits();
       setIsGiveModalOpen(false);
@@ -198,11 +192,10 @@ export const CreditsPage: React.FC = () => {
       setSubmitting(true);
       await apiClient.post(`/credits/${selectedCredit._id}/repay`, {
         amount: num,
-        accountId,
-        remarks: remarks.trim() || 'Payment received',
+        remarks: remarks.trim() || 'Payment received into Cash Drawer',
       });
 
-      showToast(`₹${num} recorded under You Got!`, 'success');
+      showToast(`₹${num} recorded under You Got (into Drawer)!`, 'success');
       await refreshAccounts();
       await fetchCredits();
       setIsGotModalOpen(false);
@@ -588,14 +581,7 @@ export const CreditsPage: React.FC = () => {
             step="any"
           />
 
-          {initialAmount && parseFloat(initialAmount) > 0 && (
-            <Select
-              label="Disbursed From (Account)"
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              options={accountOptions}
-            />
-          )}
+
 
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setIsAddCustomerOpen(false)}>
@@ -629,12 +615,7 @@ export const CreditsPage: React.FC = () => {
               min="1"
               step="any"
             />
-            <Select
-              label="Paid From (Account)"
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              options={accountOptions}
-            />
+
             <Input
               label="Description / Remarks (Optional)"
               placeholder="e.g. Pvc, print, copy"
@@ -674,12 +655,7 @@ export const CreditsPage: React.FC = () => {
               min="1"
               step="any"
             />
-            <Select
-              label="Deposit In (Account)"
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              options={accountOptions}
-            />
+
             <Input
               label="Description / Remarks (Optional)"
               placeholder="e.g. Cash received / GPay"

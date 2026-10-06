@@ -139,18 +139,22 @@ export class DayBookService {
     }
     if (!biller) throw ApiError.notFound('Billing person not found');
 
-    let account = null;
-    if (dto.accountId) {
-      account = await this.accountRepo.findById(dto.accountId);
-    } else {
-      account = (await this.accountRepo.getCashAccount()) || (await this.accountRepo.findOne({ isActive: true }));
+    // All daybook sales go directly to the physical Cash Counter Drawer (no bank account management)
+    let account = (await this.accountRepo.getCashAccount()) || (await this.accountRepo.findOne({ isActive: true }));
+    if (!account) {
+      account = await this.accountRepo.create({
+        name: 'Cash Counter Drawer',
+        type: AccountType.CASH,
+        balance: 0,
+        isActive: true,
+        isDefaultCash: true,
+      });
     }
-    if (!account) throw ApiError.notFound('Payment deposit account not found');
 
     const dateStr = dayjs(entryDate).format('YYYY-MM-DD');
     const finalRemarks = dto.remarks || dto.description || undefined;
 
-    // 1. Inflow to account balance
+    // 1. Inflow to cash drawer balance
     const updatedAccount = await this.accountRepo.adjustBalance(account._id.toString(), dto.amount);
 
     // 2. Create DayBook sales entry
@@ -158,7 +162,7 @@ export class DayBookService {
       billerId: biller._id,
       amount: dto.amount,
       accountId: account._id,
-      paymentMode: dto.paymentMode || (account.type === AccountType.CASH ? 'CASH' : 'BANK'),
+      paymentMode: 'CASH',
       date: entryDate,
       monthKey,
       billNumber: dto.billNumber,

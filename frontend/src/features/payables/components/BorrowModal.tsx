@@ -11,7 +11,7 @@ import { useAccounts } from '../../../context/AccountContext';
 interface BorrowModalProps {
   isOpen: boolean;
   onClose: () => void;
-  accounts: IAccount[];
+  accounts?: IAccount[];
   initialPartyName?: string;
   onSuccess: () => void;
 }
@@ -19,7 +19,7 @@ interface BorrowModalProps {
 export const BorrowModal: React.FC<BorrowModalProps> = ({
   isOpen,
   onClose,
-  accounts,
+  accounts = [],
   initialPartyName = '',
   onSuccess,
 }) => {
@@ -47,10 +47,6 @@ export const BorrowModal: React.FC<BorrowModalProps> = ({
       showToast('Please enter a valid amount', 'error');
       return;
     }
-    if (!accountId) {
-      showToast('Please select a receiving account', 'error');
-      return;
-    }
 
     try {
       setLoading(true);
@@ -58,12 +54,11 @@ export const BorrowModal: React.FC<BorrowModalProps> = ({
         partyName: partyName.trim(),
         phone: phone.trim() || undefined,
         amount: numAmount,
-        accountId,
         dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
         remarks: remarks.trim() || undefined,
       });
 
-      showToast(`Pending debt of ₹${numAmount} recorded from ${partyName}`, 'success');
+      showToast(`Pending liability of ₹${numAmount} recorded to Cash Drawer`, 'success');
       await refreshAccounts();
       onSuccess();
       onClose();
@@ -77,11 +72,6 @@ export const BorrowModal: React.FC<BorrowModalProps> = ({
       setLoading(false);
     }
   };
-
-  const accountOptions = accounts.map((acc) => ({
-    value: acc._id,
-    label: `${acc.name} (${acc.type}) - Balance: ₹${acc.balance.toLocaleString('en-IN')}`,
-  }));
 
   return (
     <Modal
@@ -120,13 +110,6 @@ export const BorrowModal: React.FC<BorrowModalProps> = ({
             step="any"
           />
         </div>
-
-        <Select
-          label="Received In (Account)"
-          value={accountId}
-          onChange={(e) => setAccountId(e.target.value)}
-          options={accountOptions}
-        />
 
         <Input
           label="Repayment Due Date (Optional)"

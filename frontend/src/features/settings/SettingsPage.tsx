@@ -1,17 +1,14 @@
-import React, { useState } from 'react';
-import { Settings, Plus, Building2, Wallet, Trash2, CheckCircle2, Shield } from 'lucide-react';
+import React from 'react';
+import { Settings, Building2, Wallet, Trash2, Shield } from 'lucide-react';
 import { useAccounts } from '../../context/AccountContext';
 import { formatINR } from '../../api/client';
-import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
-import { AddAccountModal } from './components/AddAccountModal';
 import { apiClient } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 
 export const SettingsPage: React.FC = () => {
   const { showToast } = useToast();
   const { accounts, refreshAccounts, liquidity } = useAccounts();
-  const [isAddOpen, setIsAddOpen] = useState(false);
 
   const handleDelete = async (id: string, name: string, isDefaultCash: boolean) => {
     if (isDefaultCash) {
@@ -36,21 +33,12 @@ export const SettingsPage: React.FC = () => {
         <div>
           <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
             <Settings className="w-7 h-7 text-slate-700" />
-            Accounts & System Master
+            Cash Drawer & Master Settings
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Manage your shop's cash drawers, bank accounts, and master ledger configuration.
+            All daily shop transactions route directly into your physical Cash Counter Drawer. Bank balances are verified manually in Daily Closing.
           </p>
         </div>
-
-        <Button
-          size="md"
-          variant="primary"
-          leftIcon={<Plus className="w-4 h-4" />}
-          onClick={() => setIsAddOpen(true)}
-        >
-          Add Bank / Cash Account
-        </Button>
       </div>
 
       {/* Account Master List */}
@@ -135,13 +123,6 @@ export const SettingsPage: React.FC = () => {
           <li><strong>Credit Cards:</strong> Cash drawn can be directly deposited into your cash in hand counter or bank, while card payments reduce cash/bank and reduce card debt.</li>
         </ul>
       </div>
-
-      {/* Add Account Modal */}
-      <AddAccountModal
-        isOpen={isAddOpen}
-        onClose={() => setIsAddOpen(false)}
-        onSuccess={refreshAccounts}
-      />
     </div>
   );
 };

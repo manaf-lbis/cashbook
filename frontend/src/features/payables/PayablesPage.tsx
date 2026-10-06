@@ -116,10 +116,6 @@ export const PayablesPage: React.FC = () => {
       return;
     }
     const numAmount = initialAmount ? parseFloat(initialAmount) : 0;
-    if (numAmount > 0 && !accountId) {
-      showToast('Please select account', 'error');
-      return;
-    }
 
     try {
       setSubmitting(true);
@@ -127,7 +123,6 @@ export const PayablesPage: React.FC = () => {
         partyName: newSuppName.trim(),
         phone: newSuppPhone.trim() || undefined,
         amount: numAmount > 0 ? numAmount : 0.01,
-        accountId: numAmount > 0 ? accountId : accounts[0]?._id,
         remarks: numAmount > 0 ? 'Opening pending balance' : 'Supplier account created',
       });
 
@@ -164,11 +159,10 @@ export const PayablesPage: React.FC = () => {
         partyName: selectedPayable.partyName,
         phone: selectedPayable.phone,
         amount: num,
-        accountId,
-        remarks: remarks.trim() || 'Goods / Borrowed funds',
+        remarks: remarks.trim() || 'Goods / Borrowed funds into Drawer',
       });
 
-      showToast(`₹${num} recorded under You Took`, 'success');
+      showToast(`₹${num} recorded under You Took (into Drawer)`, 'success');
       await refreshAccounts();
       await fetchPayables();
       setIsTookModalOpen(false);
@@ -195,11 +189,10 @@ export const PayablesPage: React.FC = () => {
       setSubmitting(true);
       await apiClient.post(`/payables/${selectedPayable._id}/payback`, {
         amount: num,
-        accountId,
-        remarks: remarks.trim() || 'Payment paid',
+        remarks: remarks.trim() || 'Payment paid from Drawer',
       });
 
-      showToast(`₹${num} recorded under You Paid!`, 'success');
+      showToast(`₹${num} recorded under You Paid (from Drawer)!`, 'success');
       await refreshAccounts();
       await fetchPayables();
       setIsPaidModalOpen(false);
@@ -585,14 +578,7 @@ export const PayablesPage: React.FC = () => {
             step="any"
           />
 
-          {initialAmount && parseFloat(initialAmount) > 0 && (
-            <Select
-              label="Received In (Account)"
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              options={accountOptions}
-            />
-          )}
+
 
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setIsAddSupplierOpen(false)}>
@@ -626,12 +612,7 @@ export const PayablesPage: React.FC = () => {
               min="1"
               step="any"
             />
-            <Select
-              label="Received In (Account)"
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              options={accountOptions}
-            />
+
             <Input
               label="Description / Bill Details (Optional)"
               placeholder="e.g. 10 bags cement / cash loan"
@@ -671,12 +652,7 @@ export const PayablesPage: React.FC = () => {
               min="1"
               step="any"
             />
-            <Select
-              label="Paid From (Account)"
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              options={accountOptions}
-            />
+
             <Input
               label="Description / Payment Method (Optional)"
               placeholder="e.g. Cash paid / NEFT"

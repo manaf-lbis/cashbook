@@ -24,17 +24,15 @@ export const AddSalesEntryModal: React.FC<AddSalesEntryModalProps> = ({
   monthKey,
 }) => {
   const { showToast } = useToast();
-  const { accounts, refreshAccounts } = useAccounts();
+  const { refreshAccounts } = useAccounts();
 
   // Core sales recording fields: Price, Description, Date (default current)
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
 
-  // Optional / Counter / Payment fields
+  // Optional fields: Biller, Bill No, Customer Name
   const [billerId, setBillerId] = useState(defaultBillerId || (billers[0]?._id ?? ''));
-  const [accountId, setAccountId] = useState('');
-  const [paymentMode, setPaymentMode] = useState<'CASH' | 'BANK' | 'UPI'>('CASH');
   const [billNumber, setBillNumber] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [showMoreOptions, setShowMoreOptions] = useState(false);
@@ -47,13 +45,6 @@ export const AddSalesEntryModal: React.FC<AddSalesEntryModalProps> = ({
       setBillerId(billers[0]._id);
     }
   }, [defaultBillerId, billers, billerId]);
-
-  useEffect(() => {
-    if (accounts.length > 0 && !accountId) {
-      const defaultCash = accounts.find((a) => a.isDefaultCash) || accounts[0];
-      setAccountId(defaultCash._id);
-    }
-  }, [accounts, accountId]);
 
   if (!isOpen) return null;
 
@@ -73,14 +64,13 @@ export const AddSalesEntryModal: React.FC<AddSalesEntryModalProps> = ({
         description: description.trim() || undefined,
         date: date ? new Date(date).toISOString() : new Date().toISOString(),
         billerId: billerId || undefined,
-        accountId: accountId || undefined,
-        paymentMode,
+        paymentMode: 'CASH',
         billNumber: billNumber.trim() || undefined,
         customerName: customerName.trim() || undefined,
       });
 
       if (res.data.success) {
-        showToast('Sale recorded successfully!', 'success');
+        showToast('Sale recorded to Cash Drawer!', 'success');
         refreshAccounts();
         setAmount('');
         setDescription('');
@@ -211,46 +201,6 @@ export const AddSalesEntryModal: React.FC<AddSalesEntryModalProps> = ({
                     </select>
                   </div>
                 )}
-
-                {/* Account & Payment Mode */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">
-                      Deposit To Account
-                    </label>
-                    <select
-                      value={accountId}
-                      onChange={(e) => {
-                        setAccountId(e.target.value);
-                        const sel = accounts.find((a) => a._id === e.target.value);
-                        if (sel?.type === 'CASH') setPaymentMode('CASH');
-                        else setPaymentMode('UPI');
-                      }}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                    >
-                      {accounts.map((acc) => (
-                        <option key={acc._id} value={acc._id}>
-                          {acc.name} (₹{acc.balance.toLocaleString('en-IN')})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">
-                      Payment Mode
-                    </label>
-                    <select
-                      value={paymentMode}
-                      onChange={(e) => setPaymentMode(e.target.value as any)}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                    >
-                      <option value="CASH">Cash in Hand</option>
-                      <option value="UPI">UPI / QR Code</option>
-                      <option value="BANK">Bank Transfer / Card</option>
-                    </select>
-                  </div>
-                </div>
 
                 {/* Customer Name & Bill No */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -59,7 +59,7 @@ export const GiveCreditSchema = z.object({
   partyName: z.string().min(1, 'Party name is required').trim(),
   phone: z.string().trim().optional(),
   amount: z.number().positive('Amount must be positive'),
-  accountId: z.string().min(1, 'Disbursement account is required'),
+  accountId: z.string().optional(),
   date: z.string().optional(),
   remarks: z.string().trim().optional(),
   dueDate: z.string().optional(),
@@ -67,7 +67,7 @@ export const GiveCreditSchema = z.object({
 
 export const RepayCreditSchema = z.object({
   amount: z.number().positive('Amount must be positive'),
-  accountId: z.string().min(1, 'Deposit account is required'),
+  accountId: z.string().optional(),
   date: z.string().optional(),
   remarks: z.string().trim().optional(),
 });
@@ -76,7 +76,7 @@ export const BorrowPayableSchema = z.object({
   partyName: z.string().min(1, 'Creditor name is required').trim(),
   phone: z.string().trim().optional(),
   amount: z.number().positive('Amount must be positive'),
-  accountId: z.string().min(1, 'Receiving account is required'),
+  accountId: z.string().optional(),
   date: z.string().optional(),
   remarks: z.string().trim().optional(),
   dueDate: z.string().optional(),
@@ -84,7 +84,7 @@ export const BorrowPayableSchema = z.object({
 
 export const PayBackPayableSchema = z.object({
   amount: z.number().positive('Amount must be positive'),
-  accountId: z.string().min(1, 'Payment account is required'),
+  accountId: z.string().optional(),
   date: z.string().optional(),
   remarks: z.string().trim().optional(),
 });

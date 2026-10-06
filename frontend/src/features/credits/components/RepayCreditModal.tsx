@@ -12,7 +12,7 @@ interface RepayCreditModalProps {
   isOpen: boolean;
   onClose: () => void;
   credit: ICredit | null;
-  accounts: IAccount[];
+  accounts?: IAccount[];
   onSuccess: () => void;
 }
 
@@ -20,7 +20,7 @@ export const RepayCreditModal: React.FC<RepayCreditModalProps> = ({
   isOpen,
   onClose,
   credit,
-  accounts,
+  accounts = [],
   onSuccess,
 }) => {
   const { showToast } = useToast();
@@ -45,20 +45,15 @@ export const RepayCreditModal: React.FC<RepayCreditModalProps> = ({
       showToast('Please enter a valid repayment amount', 'error');
       return;
     }
-    if (!accountId) {
-      showToast('Please select an account to deposit repayment', 'error');
-      return;
-    }
 
     try {
       setLoading(true);
       await apiClient.post(`/credits/${credit._id}/repay`, {
         amount: numAmount,
-        accountId,
         remarks: remarks.trim() || undefined,
       });
 
-      showToast(`Repayment of ₹${numAmount} recorded from ${credit.partyName}`, 'success');
+      showToast(`Repayment of ₹${numAmount} deposited into Cash Drawer`, 'success');
       await refreshAccounts();
       onSuccess();
       onClose();
@@ -71,11 +66,6 @@ export const RepayCreditModal: React.FC<RepayCreditModalProps> = ({
       setLoading(false);
     }
   };
-
-  const accountOptions = accounts.map((acc) => ({
-    value: acc._id,
-    label: `${acc.name} (${acc.type}) - Balance: ₹${acc.balance.toLocaleString('en-IN')}`,
-  }));
 
   return (
     <Modal
@@ -104,13 +94,6 @@ export const RepayCreditModal: React.FC<RepayCreditModalProps> = ({
           max={credit.balanceDue}
           step="any"
           autoFocus
-        />
-
-        <Select
-          label="Deposit Into (Account)"
-          value={accountId}
-          onChange={(e) => setAccountId(e.target.value)}
-          options={accountOptions}
         />
 
         <Input

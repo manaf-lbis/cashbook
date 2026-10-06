@@ -135,11 +135,11 @@ export const DashboardPage: React.FC = () => {
 
         {/* 4 Core Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: Total Liquid Funds */}
+          {/* Card 1: Primary Cash Counter Drawer */}
           <StatCard
-            title="Total Available Cash"
-            amount={formatINR(liquidity.totalLiquidity)}
-            subtitle={`In Hand: ${formatINR(liquidity.cashInHand)} • Banks: ${formatINR(liquidity.bankBalancesTotal)}`}
+            title="Cash Counter Drawer"
+            amount={formatINR(liquidity.cashInHand)}
+            subtitle="Live physical cash in shop drawer"
             icon={<Wallet className="w-5 h-5" />}
             iconBgColor="bg-emerald-50"
             iconTextColor="text-emerald-600"
@@ -207,79 +207,56 @@ export const DashboardPage: React.FC = () => {
 
         {/* Middle Two-Column Grid: Accounts & Bank Liquidity + Monthly Expenses */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Bank & Cash Balances (7 cols) */}
+          {/* Cash Counter Drawer & Reconciliation (7 cols) */}
           <div className="lg:col-span-7 rounded-2xl bg-white border border-slate-200/80 p-6 shadow-sm flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                 <div>
                   <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-sky-600" />
-                    Accounts & Bank Liquidity
+                    <Wallet className="w-4 h-4 text-emerald-600" />
+                    Cash Counter Drawer
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Live balances in shop drawers & bank accounts
+                    Physical drawer balance for peak-time sales and operations
                   </p>
                 </div>
                 <Button
                   size="sm"
                   variant="outline"
                   className="text-xs text-slate-600 hover:text-slate-900"
-                  onClick={() => navigate('/settings')}
+                  onClick={() => navigate('/daily-closing')}
                 >
-                  Manage
+                  Daily Closing
                 </Button>
               </div>
 
-              <div className="mt-4 space-y-2.5">
+              <div className="mt-4 space-y-3">
                 {/* Primary Cash Drawer */}
-                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50/80 border border-slate-100">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-1.5 rounded-lg bg-emerald-100/70 text-emerald-700">
-                      <Wallet className="w-4 h-4" />
+                <div className="flex items-center justify-between p-4 rounded-xl bg-emerald-50/60 border border-emerald-100">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700">
+                      <Wallet className="w-5 h-5" />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">Cash Counter Drawer</p>
-                      <p className="text-[11px] text-slate-400">Primary Physical Cash</p>
+                      <p className="text-sm font-bold text-slate-900">Physical Counter Drawer</p>
+                      <p className="text-xs text-slate-500">Live balance from DayBook sales, expenses & collections</p>
                     </div>
                   </div>
-                  <span className="font-mono text-sm font-bold text-slate-900">
+                  <span className="font-mono text-lg font-black text-emerald-700">
                     {formatINR(liquidity.cashInHand)}
                   </span>
                 </div>
 
-                {/* Bank Accounts */}
-                {bankAccounts.length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-4">No bank accounts linked yet.</p>
-                ) : (
-                  bankAccounts.map((acc) => (
-                    <div
-                      key={acc._id}
-                      className="flex items-center justify-between p-3 rounded-xl bg-slate-50/80 border border-slate-100"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="p-1.5 rounded-lg bg-sky-100/70 text-sky-700">
-                          <Building2 className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{acc.name}</p>
-                          <p className="text-[11px] text-slate-400">
-                            {acc.bankName || 'Bank'} • ****{acc.accountNumber?.slice(-4) || '—'}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="font-mono text-sm font-bold text-slate-900">
-                        {formatINR(acc.balance)}
-                      </span>
-                    </div>
-                  ))
-                )}
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 leading-relaxed">
+                  ⚡ <strong>Peak-Time Mode:</strong> All sales automatically route straight to your physical cash drawer. Bank balances (Fedbank, SBI, UPI wallets) are entered manually during opening & closing verification.
+                </div>
               </div>
             </div>
 
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-              <span>Total Liquid Funds</span>
+              <span>Drawer Available Balance</span>
               <span className="font-mono font-bold text-emerald-600 text-sm">
-                {formatINR(liquidity.totalLiquidity)}
+                {formatINR(liquidity.cashInHand)}
               </span>
             </div>
           </div>

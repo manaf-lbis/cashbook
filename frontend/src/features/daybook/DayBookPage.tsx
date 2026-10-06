@@ -550,19 +550,13 @@ export const DayBookPage: React.FC = () => {
                     </div>
 
                     {/* Account / Mode */}
-                    <div className="w-36 text-xs">
+                    <div className="w-32 text-xs">
                       <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                        {entry.paymentMode === 'CASH' ? (
-                          <Wallet className="w-3.5 h-3.5 text-emerald-600" />
-                        ) : entry.paymentMode === 'UPI' ? (
-                          <QrCode className="w-3.5 h-3.5 text-indigo-600" />
-                        ) : (
-                          <Building2 className="w-3.5 h-3.5 text-sky-600" />
-                        )}
-                        <span>{entry.paymentMode}</span>
+                        <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Cash Drawer</span>
                       </div>
                       <p className="text-[11px] text-slate-400 truncate">
-                        {typeof entry.accountId === 'object' ? entry.accountId.name : 'Account'}
+                        Counter Inflow
                       </p>
                     </div>
 
