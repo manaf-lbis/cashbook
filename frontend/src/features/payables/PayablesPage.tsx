@@ -7,6 +7,7 @@ import {
   Plus,
   Edit3,
   Trash2,
+  Lock,
 } from 'lucide-react';
 import { apiClient, formatINR, formatDate, formatDateTime } from '../../api/client';
 import { IPayable, IPayableEntry, PayableTransactionType, ApiResponse } from '../../types';
@@ -495,6 +496,15 @@ export const PayablesPage: React.FC = () => {
                           >
                             {formatDateTime(entry.date)}
                           </p>
+                          {entry.isReconciled && !isDeleted && (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-300 uppercase tracking-wider shadow-2xs"
+                              title="Reconciled in Daily Closing. Editing and deleting are locked."
+                            >
+                              <Lock className="w-2.5 h-2.5 text-slate-400" />
+                              Reconciled
+                            </span>
+                          )}
                           {isDeleted && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs">
                               DELETED
@@ -556,24 +566,33 @@ export const PayablesPage: React.FC = () => {
                         {/* Actions */}
                         <div className="w-16 text-center flex items-center justify-center gap-1">
                           {!isDeleted ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => setEditingEntry(entry)}
-                                className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                                title="Edit this entry"
+                            entry.isReconciled ? (
+                              <span
+                                className="p-1.5 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed inline-flex items-center"
+                                title="Locked: Reconciled in Daily Closing. Cannot edit or delete."
                               >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeletePayableEntry(entry)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="Delete this entry"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
+                                <Lock className="w-4 h-4 text-slate-400" />
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingEntry(entry)}
+                                  className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Edit this entry"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePayableEntry(entry)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Delete this entry"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )
                           ) : (
                             <span className="text-[11px] text-slate-300 font-semibold">—</span>
                           )}

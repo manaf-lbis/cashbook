@@ -3,6 +3,7 @@ import { AccountRepository } from '../repositories/AccountRepository';
 import { TransactionRepository } from '../repositories/TransactionRepository';
 import { CreditTransactionType, AccountType, TransactionType, TransactionSource } from '../constants/enums';
 import { ApiError } from '../utils/ApiError';
+import { ReconciliationLockService } from './ReconciliationLockService';
 import dayjs from 'dayjs';
 
 export class CreditService {
@@ -34,6 +35,7 @@ export class CreditService {
     if (!account) throw ApiError.notFound('Cash drawer account not found');
 
     const txDate = dto.date || new Date();
+    await ReconciliationLockService.assertCanCreateEntry(txDate);
     const dateStr = dayjs(txDate).format('YYYY-MM-DD');
 
     // 1. Deduct from account (cash drawer)
@@ -109,6 +111,7 @@ export class CreditService {
     if (!account) throw ApiError.notFound('Cash drawer account not found');
 
     const txDate = dto.date || new Date();
+    await ReconciliationLockService.assertCanCreateEntry(txDate);
     const dateStr = dayjs(txDate).format('YYYY-MM-DD');
 
     // 1. Credit the account (money received into cash drawer)
@@ -147,13 +150,37 @@ export class CreditService {
   }
 
   async getAllCredits(filter: any = {}) {
-    return await this.creditRepo.getCreditsWithAccounts(filter);
+    const credits = await this.creditRepo.getCreditsWithAccounts(filter);
+    const allEntries: any[] = [];
+    for (const c of credits) {
+      if (c.entries) allEntries.push(...c.entries);
+    }
+    const lockedIds = await ReconciliationLockService.getLockedEntryIds(allEntries);
+
+    return credits.map((c: any) => {
+      const obj = c.toObject ? c.toObject() : c;
+      if (obj.entries) {
+        obj.entries = obj.entries.map((e: any) => ({
+          ...e,
+          isReconciled: lockedIds.has(e._id?.toString()),
+        }));
+      }
+      return obj;
+    });
   }
 
   async getCreditById(id: string) {
     const credit = await this.creditRepo.findById(id, 'entries.accountId');
     if (!credit) throw ApiError.notFound('Credit record not found');
-    return credit;
+    const lockedIds = await ReconciliationLockService.getLockedEntryIds(credit.entries || []);
+    const obj = (credit as any).toObject ? (credit as any).toObject() : credit;
+    if (obj.entries) {
+      obj.entries = obj.entries.map((e: any) => ({
+        ...e,
+        isReconciled: lockedIds.has(e._id?.toString()),
+      }));
+    }
+    return obj;
   }
 
   async getTotalReceivables() {
@@ -173,6 +200,12 @@ export class CreditService {
     );
     if (!entry) throw ApiError.notFound('Credit entry not found');
     if (entry.isDeleted) throw ApiError.badRequest('Cannot edit a deleted credit entry.');
+
+    // Block edit if recorded prior to daily closing / reconciliation
+    await ReconciliationLockService.assertNotLocked(entry.date, (entry as any).createdAt);
+    if (dto.date) {
+      await ReconciliationLockService.assertCanCreateEntry(dto.date);
+    }
 
     const previousAmount = entry.amount;
     const newAmount = dto.amount !== undefined ? dto.amount : previousAmount;
@@ -215,6 +248,9 @@ export class CreditService {
     );
     if (!entry) throw ApiError.notFound('Credit entry not found');
     if (entry.isDeleted) throw ApiError.badRequest('Credit entry is already deleted');
+
+    // Block delete if recorded prior to daily closing / reconciliation
+    await ReconciliationLockService.assertNotLocked(entry.date, (entry as any).createdAt);
 
     const accountId = entry.accountId ? entry.accountId.toString() : null;
     if (accountId) {

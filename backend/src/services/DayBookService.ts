@@ -5,6 +5,7 @@ import { AccountRepository } from '../repositories/AccountRepository';
 import { TransactionRepository } from '../repositories/TransactionRepository';
 import { AccountType, TransactionType, TransactionSource } from '../constants/enums';
 import { ApiError } from '../utils/ApiError';
+import { ReconciliationLockService } from './ReconciliationLockService';
 
 export class DayBookService {
   private billerRepo: BillerRepository;
@@ -88,7 +89,16 @@ export class DayBookService {
     const biller = await this.billerRepo.findById(billerId);
     if (!biller) throw ApiError.notFound('Billing person not found');
 
-    const entries = await this.daybookRepo.findByBillerAndMonth(billerId, monthKey);
+    const rawEntries = await this.daybookRepo.findByBillerAndMonth(billerId, monthKey);
+    const lockedIds = await ReconciliationLockService.getLockedEntryIds(rawEntries);
+    const entries = rawEntries.map((e) => {
+      const obj = (e as any).toObject ? (e as any).toObject() : e;
+      return {
+        ...obj,
+        isReconciled: lockedIds.has(e._id.toString()),
+      };
+    });
+
     return {
       biller,
       monthKey,
@@ -111,6 +121,8 @@ export class DayBookService {
     if (dto.amount <= 0) throw ApiError.badRequest('Sale amount must be greater than zero');
 
     const entryDate = dto.date ? new Date(dto.date) : new Date();
+    await ReconciliationLockService.assertCanCreateEntry(entryDate);
+
     const monthKey = dayjs(entryDate).format('YYYY-MM');
     const status = this.getMonthStatus(monthKey);
 
@@ -218,6 +230,12 @@ export class DayBookService {
       throw ApiError.badRequest('Cannot edit a deleted sales entry.');
     }
 
+    // Block edit if entry was recorded prior to daily closing / reconciliation
+    await ReconciliationLockService.assertNotLocked(entry.date, entry.createdAt);
+    if (dto.date) {
+      await ReconciliationLockService.assertCanCreateEntry(dto.date);
+    }
+
     const monthStatus = this.getMonthStatus(entry.monthKey);
     if (monthStatus === 'LOCKED') {
       throw ApiError.badRequest('Cannot edit entries in locked future months.');
@@ -292,6 +310,9 @@ export class DayBookService {
     if (entry.isDeleted) {
       throw ApiError.badRequest('Sales entry is already deleted.');
     }
+
+    // Block delete if entry was recorded prior to daily closing / reconciliation
+    await ReconciliationLockService.assertNotLocked(entry.date, entry.createdAt);
 
     const monthStatus = this.getMonthStatus(entry.monthKey);
     if (monthStatus === 'LOCKED') {

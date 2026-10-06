@@ -3,6 +3,7 @@ import { AccountRepository } from '../repositories/AccountRepository';
 import { TransactionRepository } from '../repositories/TransactionRepository';
 import { CreditCardTransactionType, AccountType, TransactionType, TransactionSource } from '../constants/enums';
 import { ApiError } from '../utils/ApiError';
+import { ReconciliationLockService } from './ReconciliationLockService';
 import dayjs from 'dayjs';
 
 export class CreditCardService {
@@ -174,6 +175,12 @@ export class CreditCardService {
   ) {
     const tx = await this.cardTxRepo.findById(txId);
     if (!tx) throw ApiError.notFound('Credit card transaction not found');
+
+    // Block edit if recorded prior to daily closing / reconciliation
+    await ReconciliationLockService.assertNotLocked(tx.date, tx.createdAt);
+    if (dto.date) {
+      await ReconciliationLockService.assertCanCreateEntry(dto.date);
+    }
 
     const card = await this.cardRepo.findById(tx.cardId.toString());
     if (!card) throw ApiError.notFound('Credit card not found');

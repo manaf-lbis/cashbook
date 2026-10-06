@@ -9,6 +9,7 @@ import {
   FolderPlus,
   Tag,
   Trash2,
+  Lock,
 } from 'lucide-react';
 import { apiClient, formatINR, formatDateTime, formatDate } from '../../api/client';
 import { IExpense, IExpenseCategory, ApiResponse } from '../../types';
@@ -435,6 +436,17 @@ export const ExpensesPage: React.FC = () => {
                         <span className={isDeleted ? 'line-through decoration-rose-500 decoration-2' : ''}>
                           {exp.title}
                         </span>
+
+                        {exp.isReconciled && !isDeleted && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-300 uppercase tracking-wider shadow-2xs"
+                            title="Reconciled in Daily Closing. Editing and deleting are locked."
+                          >
+                            <Lock className="w-2.5 h-2.5 text-slate-400" />
+                            Reconciled
+                          </span>
+                        )}
+
                         {isDeleted && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs">
                             DELETED
@@ -458,22 +470,31 @@ export const ExpensesPage: React.FC = () => {
                       {/* Actions */}
                       <div className="w-20 text-center flex items-center justify-center gap-1">
                         {!isDeleted ? (
-                          <>
-                            <button
-                              onClick={() => setEditingExpense(exp)}
-                              className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                              title="Edit expense"
+                          exp.isReconciled ? (
+                            <span
+                              className="p-1.5 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed inline-flex items-center"
+                              title="Locked: Reconciled in Daily Closing. Cannot edit or delete."
                             >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteExpense(exp)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="Delete expense"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
+                              <Lock className="w-4 h-4 text-slate-400" />
+                            </span>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => setEditingExpense(exp)}
+                                className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                title="Edit expense"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteExpense(exp)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                title="Delete expense"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )
                         ) : (
                           <span className="text-[11px] text-slate-300 font-semibold">—</span>
                         )}

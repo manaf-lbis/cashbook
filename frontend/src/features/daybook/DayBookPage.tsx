@@ -637,6 +637,16 @@ export const DayBookPage: React.FC = () => {
                           </span>
                         </div>
 
+                        {entry.isReconciled && !isDeleted && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-300 uppercase tracking-wider shadow-2xs shrink-0"
+                            title="Reconciled in Daily Closing. Editing and deleting are locked."
+                          >
+                            <Lock className="w-2.5 h-2.5 text-slate-400" />
+                            Reconciled
+                          </span>
+                        )}
+
                         {isDeleted ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs shrink-0">
                             DELETED
@@ -675,24 +685,33 @@ export const DayBookPage: React.FC = () => {
                         </span>
 
                         {!isDeleted && currentMonthObj?.status === 'ACTIVE' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => setEditingEntry(entry)}
-                              className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                              title="Edit this sale entry"
+                          entry.isReconciled ? (
+                            <span
+                              className="p-1.5 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed inline-flex items-center"
+                              title="Locked: Reconciled in Daily Closing. Cannot edit or delete."
                             >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteEntry(entry)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="Delete this sale entry"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
+                              <Lock className="w-4 h-4 text-slate-400" />
+                            </span>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setEditingEntry(entry)}
+                                className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                title="Edit this sale entry"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteEntry(entry)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                title="Delete this sale entry"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )
                         )}
                       </div>
                     </div>

@@ -102,6 +102,7 @@ export interface IExpense {
   isDeleted?: boolean;
   deletedAt?: string;
   deletedReason?: string;
+  isReconciled?: boolean;
   createdAt: string;
 }
 
@@ -114,6 +115,7 @@ export interface ICreditEntry {
   remarks?: string;
   isDeleted?: boolean;
   deletedAt?: string;
+  isReconciled?: boolean;
 }
 
 export interface ICredit {
@@ -140,6 +142,7 @@ export interface IPayableEntry {
   remarks?: string;
   isDeleted?: boolean;
   deletedAt?: string;
+  isReconciled?: boolean;
 }
 
 export interface IPayable {
@@ -288,6 +291,7 @@ export interface IDayBookEntry {
   isDeleted?: boolean;
   deletedAt?: string;
   deletedReason?: string;
+  isReconciled?: boolean;
   createdAt: string;
   updatedAt?: string;
 }

@@ -4,6 +4,7 @@ import { TransactionRepository } from '../repositories/TransactionRepository';
 import { ExpenseCategoryModel } from '../models/ExpenseCategory';
 import { AccountType, TransactionType, TransactionSource } from '../constants/enums';
 import { ApiError } from '../utils/ApiError';
+import { ReconciliationLockService } from './ReconciliationLockService';
 import dayjs from 'dayjs';
 
 export class ExpenseService {
@@ -41,6 +42,7 @@ export class ExpenseService {
     }
 
     const expDate = dto.date || new Date();
+    await ReconciliationLockService.assertCanCreateEntry(expDate);
     const finalCategory = dto.category || 'Other Expenses';
 
     // Ensure category is registered in ExpenseCategoryModel
@@ -92,6 +94,12 @@ export class ExpenseService {
     if (!expense) throw ApiError.notFound('Expense not found');
     if (expense.isDeleted) throw ApiError.badRequest('Cannot edit a deleted expense.');
 
+    // Block edit if recorded prior to daily closing / reconciliation
+    await ReconciliationLockService.assertNotLocked(expense.date, expense.createdAt);
+    if (dto.date) {
+      await ReconciliationLockService.assertCanCreateEntry(dto.date);
+    }
+
     const previousAmount = expense.amount;
     const newAmount = dto.amount !== undefined ? dto.amount : previousAmount;
     if (newAmount <= 0) throw ApiError.badRequest('Expense amount must be greater than zero');
@@ -135,6 +143,9 @@ export class ExpenseService {
     if (!expense) throw ApiError.notFound('Expense not found');
     if (expense.isDeleted) throw ApiError.badRequest('Expense is already deleted');
 
+    // Block delete if recorded prior to daily closing / reconciliation
+    await ReconciliationLockService.assertNotLocked(expense.date, expense.createdAt);
+
     // Reverse account deduction: money goes back into the drawer
     const updatedAccount = await this.accountRepo.adjustBalance(expense.accountId.toString(), expense.amount);
 
@@ -158,7 +169,15 @@ export class ExpenseService {
   }
 
   async getExpenses(filter: any = {}, limit = 100, skip = 0) {
-    return await this.expenseRepo.getExpensesWithDetails(filter, limit, skip);
+    const rawExpenses = await this.expenseRepo.getExpensesWithDetails(filter, limit, skip);
+    const lockedIds = await ReconciliationLockService.getLockedEntryIds(rawExpenses);
+    return rawExpenses.map((exp: any) => {
+      const obj = exp.toObject ? exp.toObject() : exp;
+      return {
+        ...obj,
+        isReconciled: lockedIds.has(exp._id.toString()),
+      };
+    });
   }
 
   async getCategoryBreakdown(startDate?: Date, endDate?: Date) {
