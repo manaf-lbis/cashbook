@@ -8,6 +8,8 @@ export interface IPayableEntry {
   accountId: mongoose.Types.ObjectId;
   date: Date;
   remarks?: string;
+  isDeleted?: boolean;
+  deletedAt?: Date;
   createdAt?: Date;
 }
 
@@ -32,6 +34,8 @@ const PayableEntrySchema = new Schema<IPayableEntry>(
     accountId: { type: Schema.Types.ObjectId, ref: 'Account', required: true },
     date: { type: Date, default: Date.now, required: true },
     remarks: { type: String, trim: true },
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date },
   },
   { timestamps: true }
 );

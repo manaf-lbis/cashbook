@@ -99,6 +99,9 @@ export interface IExpense {
   date: string;
   remarks?: string;
   receiptNumber?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedReason?: string;
   createdAt: string;
 }
 
@@ -109,6 +112,8 @@ export interface ICreditEntry {
   accountId: IAccount | string;
   date: string;
   remarks?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
 }
 
 export interface ICredit {
@@ -133,6 +138,8 @@ export interface IPayableEntry {
   accountId: IAccount | string;
   date: string;
   remarks?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
 }
 
 export interface IPayable {
@@ -278,6 +285,9 @@ export interface IDayBookEntry {
   remarks?: string;
   isEdited?: boolean;
   editLogs?: IEditLog[];
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedReason?: string;
   createdAt: string;
   updatedAt?: string;
 }

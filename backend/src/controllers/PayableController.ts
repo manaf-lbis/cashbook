@@ -56,4 +56,14 @@ export class PayableController {
       next(err);
     }
   };
+
+  deleteEntry = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id, entryId } = req.params;
+      const payable = await this.payableService.deletePayableEntry(id, entryId);
+      return ApiResponse.success(res, payable, 'Payable entry marked as deleted successfully');
+    } catch (err) {
+      next(err);
+    }
+  };
 }

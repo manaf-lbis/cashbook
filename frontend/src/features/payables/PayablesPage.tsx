@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Plus,
   Edit3,
+  Trash2,
 } from 'lucide-react';
 import { apiClient, formatINR, formatDate, formatDateTime } from '../../api/client';
 import { IPayable, IPayableEntry, PayableTransactionType, ApiResponse } from '../../types';
@@ -85,6 +86,28 @@ export const PayablesPage: React.FC = () => {
       setAccountId(accounts[0]._id);
     }
   }, [accounts, accountId]);
+
+  const handleDeletePayableEntry = async (entry: IPayableEntry) => {
+    if (!selectedPayable || entry.isDeleted) return;
+    if (
+      !window.confirm(
+        `Are you sure you want to delete this payable entry of ₹${entry.amount.toLocaleString(
+          'en-IN'
+        )}? It will be marked with a red strike, a DELETED badge, and excluded from supplier pending dues.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await apiClient.delete(`/payables/${selectedPayable._id}/entries/${entry._id}`);
+      showToast('Payable entry marked as deleted', 'success');
+      fetchPayables();
+      refreshAccounts();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete payable entry', 'error');
+    }
+  };
 
   // Totals
   const totalYouWillPay = payables.reduce((sum, p) => sum + (p.status === 'ACTIVE' ? p.balancePending : 0), 0);
@@ -452,56 +475,113 @@ export const PayablesPage: React.FC = () => {
             {/* Entries Stream */}
             <div className="flex-1 overflow-y-auto divide-y divide-slate-100 px-6">
               {selectedPayable.entries && selectedPayable.entries.length > 0 ? (
-                [...selectedPayable.entries].reverse().map((entry, idx) => (
-                  <div
-                    key={entry._id || idx}
-                    className="py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors"
-                  >
-                    <div>
-                      <p className="text-sm font-bold text-slate-800 font-mono">
-                        {formatDateTime(entry.date)}
-                      </p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Balance: ₹{selectedPayable.balancePending.toLocaleString('en-IN')}
-                      </p>
-                      <p className="text-sm text-slate-600 mt-1 font-medium">
-                        {entry.remarks || (entry.type === PayableTransactionType.BORROWED ? 'Stock / Borrowed' : 'Payment')}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-16 pr-4">
-                      {/* YOU TOOK */}
-                      <div className="w-20 text-right font-mono font-bold text-sm">
-                        {entry.type === PayableTransactionType.BORROWED ? (
-                          <span className="text-rose-600">₹{entry.amount.toLocaleString('en-IN')}</span>
-                        ) : (
-                          <span className="text-slate-300">-</span>
-                        )}
-                      </div>
-
-                      {/* YOU PAID */}
-                      <div className="w-20 text-right font-mono font-bold text-sm">
-                        {entry.type === PayableTransactionType.PAID ? (
-                          <span className="text-emerald-600">₹{entry.amount.toLocaleString('en-IN')}</span>
-                        ) : (
-                          <span className="text-slate-300">-</span>
-                        )}
-                      </div>
-
-                      {/* Edit Action */}
-                      <div className="w-8 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setEditingEntry(entry)}
-                          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                          title="Edit this entry"
+                [...selectedPayable.entries].reverse().map((entry, idx) => {
+                  const isDeleted = !!entry.isDeleted;
+                  return (
+                    <div
+                      key={entry._id || idx}
+                      className={`py-3.5 flex items-center justify-between transition-colors ${
+                        isDeleted ? 'bg-rose-50/40 hover:bg-rose-50/60' : 'hover:bg-slate-50/50'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p
+                            className={`text-sm font-bold font-mono ${
+                              isDeleted
+                                ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                : 'text-slate-800'
+                            }`}
+                          >
+                            {formatDateTime(entry.date)}
+                          </p>
+                          {isDeleted && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs">
+                              DELETED
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Balance: ₹{selectedPayable.balancePending.toLocaleString('en-IN')}
+                        </p>
+                        <p
+                          className={`text-sm mt-1 font-medium ${
+                            isDeleted
+                              ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                              : 'text-slate-600'
+                          }`}
                         >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
+                          {entry.remarks ||
+                            (entry.type === PayableTransactionType.BORROWED
+                              ? 'Stock / Borrowed'
+                              : 'Payment')}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-8 sm:gap-14 pr-4">
+                        {/* YOU TOOK */}
+                        <div className="w-20 text-right font-mono font-bold text-sm">
+                          {entry.type === PayableTransactionType.BORROWED ? (
+                            <span
+                              className={
+                                isDeleted
+                                  ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                  : 'text-rose-600'
+                              }
+                            >
+                              ₹{entry.amount.toLocaleString('en-IN')}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </div>
+
+                        {/* YOU PAID */}
+                        <div className="w-20 text-right font-mono font-bold text-sm">
+                          {entry.type === PayableTransactionType.PAID ? (
+                            <span
+                              className={
+                                isDeleted
+                                  ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                  : 'text-emerald-600'
+                              }
+                            >
+                              ₹{entry.amount.toLocaleString('en-IN')}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="w-16 text-center flex items-center justify-center gap-1">
+                          {!isDeleted ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setEditingEntry(entry)}
+                                className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                title="Edit this entry"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePayableEntry(entry)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                title="Delete this entry"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-[11px] text-slate-300 font-semibold">—</span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="py-24 text-center text-sm text-slate-400">
                   No entries recorded yet. Click <strong>You Took ₹</strong> or <strong>You Paid ₹</strong> below.

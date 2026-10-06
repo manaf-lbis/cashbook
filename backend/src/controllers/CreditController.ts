@@ -56,4 +56,14 @@ export class CreditController {
       next(err);
     }
   };
+
+  deleteEntry = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id, entryId } = req.params;
+      const credit = await this.creditService.deleteCreditEntry(id, entryId);
+      return ApiResponse.success(res, credit, 'Credit entry marked as deleted successfully');
+    } catch (err) {
+      next(err);
+    }
+  };
 }

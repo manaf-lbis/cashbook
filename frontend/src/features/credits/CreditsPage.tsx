@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Plus,
   Edit3,
+  Trash2,
 } from 'lucide-react';
 import { apiClient, formatINR, formatDate, formatDateTime } from '../../api/client';
 import { ICredit, ICreditEntry, CreditTransactionType, ApiResponse } from '../../types';
@@ -88,6 +89,28 @@ export const CreditsPage: React.FC = () => {
       setAccountId(accounts[0]._id);
     }
   }, [accounts, accountId]);
+
+  const handleDeleteCreditEntry = async (entry: ICreditEntry) => {
+    if (!selectedCredit || entry.isDeleted) return;
+    if (
+      !window.confirm(
+        `Are you sure you want to delete this credit entry of ₹${entry.amount.toLocaleString(
+          'en-IN'
+        )}? It will be marked with a red strike, a DELETED badge, and excluded from customer balances.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await apiClient.delete(`/credits/${selectedCredit._id}/entries/${entry._id}`);
+      showToast('Credit entry marked as deleted', 'success');
+      fetchCredits();
+      refreshAccounts();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete credit entry', 'error');
+    }
+  };
 
   // Totals
   const totalYouWillGet = credits.reduce((sum, c) => sum + (c.status === 'ACTIVE' ? c.balanceDue : 0), 0);
@@ -455,56 +478,111 @@ export const CreditsPage: React.FC = () => {
             {/* Entries Stream */}
             <div className="flex-1 overflow-y-auto divide-y divide-slate-100 px-6">
               {selectedCredit.entries && selectedCredit.entries.length > 0 ? (
-                [...selectedCredit.entries].reverse().map((entry, idx) => (
-                  <div
-                    key={entry._id || idx}
-                    className="py-3.5 flex items-center justify-between hover:bg-slate-50/50 transition-colors"
-                  >
-                    <div>
-                      <p className="text-sm font-bold text-slate-800 font-mono">
-                        {formatDateTime(entry.date)}
-                      </p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Balance: ₹{selectedCredit.balanceDue.toLocaleString('en-IN')}
-                      </p>
-                      <p className="text-sm text-slate-600 mt-1 font-medium">
-                        {entry.remarks || (entry.type === CreditTransactionType.GIVEN ? 'Credit item' : 'Payment')}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-16 pr-4">
-                      {/* YOU GAVE */}
-                      <div className="w-20 text-right font-mono font-bold text-sm">
-                        {entry.type === CreditTransactionType.GIVEN ? (
-                          <span className="text-rose-600">₹{entry.amount.toLocaleString('en-IN')}</span>
-                        ) : (
-                          <span className="text-slate-300">-</span>
-                        )}
-                      </div>
-
-                      {/* YOU GOT */}
-                      <div className="w-20 text-right font-mono font-bold text-sm">
-                        {entry.type === CreditTransactionType.REPAYMENT ? (
-                          <span className="text-emerald-600">₹{entry.amount.toLocaleString('en-IN')}</span>
-                        ) : (
-                          <span className="text-slate-300">-</span>
-                        )}
-                      </div>
-
-                      {/* Edit Action */}
-                      <div className="w-8 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setEditingEntry(entry)}
-                          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                          title="Edit this entry"
+                [...selectedCredit.entries].reverse().map((entry, idx) => {
+                  const isDeleted = !!entry.isDeleted;
+                  return (
+                    <div
+                      key={entry._id || idx}
+                      className={`py-3.5 flex items-center justify-between transition-colors ${
+                        isDeleted ? 'bg-rose-50/40 hover:bg-rose-50/60' : 'hover:bg-slate-50/50'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p
+                            className={`text-sm font-bold font-mono ${
+                              isDeleted
+                                ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                : 'text-slate-800'
+                            }`}
+                          >
+                            {formatDateTime(entry.date)}
+                          </p>
+                          {isDeleted && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs">
+                              DELETED
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Balance: ₹{selectedCredit.balanceDue.toLocaleString('en-IN')}
+                        </p>
+                        <p
+                          className={`text-sm mt-1 font-medium ${
+                            isDeleted
+                              ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                              : 'text-slate-600'
+                          }`}
                         >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
+                          {entry.remarks ||
+                            (entry.type === CreditTransactionType.GIVEN ? 'Credit item' : 'Payment')}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-8 sm:gap-14 pr-4">
+                        {/* YOU GAVE */}
+                        <div className="w-20 text-right font-mono font-bold text-sm">
+                          {entry.type === CreditTransactionType.GIVEN ? (
+                            <span
+                              className={
+                                isDeleted
+                                  ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                  : 'text-rose-600'
+                              }
+                            >
+                              ₹{entry.amount.toLocaleString('en-IN')}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </div>
+
+                        {/* YOU GOT */}
+                        <div className="w-20 text-right font-mono font-bold text-sm">
+                          {entry.type === CreditTransactionType.REPAYMENT ? (
+                            <span
+                              className={
+                                isDeleted
+                                  ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                                  : 'text-emerald-600'
+                              }
+                            >
+                              ₹{entry.amount.toLocaleString('en-IN')}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="w-16 text-center flex items-center justify-center gap-1">
+                          {!isDeleted ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setEditingEntry(entry)}
+                                className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                title="Edit this entry"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCreditEntry(entry)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                title="Delete this entry"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-[11px] text-slate-300 font-semibold">—</span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="py-24 text-center text-sm text-slate-400">
                   No entries recorded yet. Click <strong>You Gave ₹</strong> or <strong>You Got ₹</strong> below.

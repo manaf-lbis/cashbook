@@ -8,6 +8,9 @@ export interface IExpense extends Document {
   date: Date;
   remarks?: string;
   receiptNumber?: string;
+  isDeleted?: boolean;
+  deletedAt?: Date;
+  deletedReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +24,9 @@ const ExpenseSchema = new Schema<IExpense>(
     date: { type: Date, default: Date.now, required: true },
     remarks: { type: String, trim: true },
     receiptNumber: { type: String, trim: true },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date },
+    deletedReason: { type: String, trim: true },
   },
   { timestamps: true }
 );

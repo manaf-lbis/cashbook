@@ -11,5 +11,6 @@ router.get('/:id', controller.getById);
 router.post('/give', validateRequest(GiveCreditSchema), controller.giveCredit);
 router.post('/:id/repay', validateRequest(RepayCreditSchema), controller.collectRepayment);
 router.put('/:id/entries/:entryId', validateRequest(UpdateCreditEntrySchema), controller.updateEntry);
+router.delete('/:id/entries/:entryId', controller.deleteEntry);
 
 export default router;

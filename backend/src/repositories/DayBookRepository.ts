@@ -29,7 +29,7 @@ export class DayBookRepository extends BaseRepository<IDayBookEntry> {
 
   async getMonthAggregates(monthKey: string) {
     const result = await this._model.aggregate([
-      { $match: { monthKey } },
+      { $match: { monthKey, isDeleted: { $ne: true } } },
       {
         $group: {
           _id: null,
@@ -47,7 +47,7 @@ export class DayBookRepository extends BaseRepository<IDayBookEntry> {
 
   async getBillerMonthSums(monthKey: string): Promise<Record<string, { totalSales: number; totalBills: number }>> {
     const rows = await this._model.aggregate([
-      { $match: { monthKey } },
+      { $match: { monthKey, isDeleted: { $ne: true } } },
       {
         $group: {
           _id: '$billerId',

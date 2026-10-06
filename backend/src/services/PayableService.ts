@@ -176,6 +176,7 @@ export class PayableService {
       (e: any) => e._id?.toString() === entryId || (e as any).id === entryId
     );
     if (!entry) throw ApiError.notFound('Payable entry not found');
+    if (entry.isDeleted) throw ApiError.badRequest('Cannot edit a deleted payable entry.');
 
     const previousAmount = entry.amount;
     const newAmount = dto.amount !== undefined ? dto.amount : previousAmount;
@@ -204,6 +205,37 @@ export class PayableService {
     entry.amount = newAmount;
     if (dto.remarks !== undefined) entry.remarks = dto.remarks.trim();
     if (dto.date) entry.date = new Date(dto.date);
+
+    await payable.save();
+    return await this.payableRepo.findById(payableId, 'entries.accountId');
+  }
+
+  async deletePayableEntry(payableId: string, entryId: string) {
+    const payable = await this.payableRepo.findById(payableId);
+    if (!payable) throw ApiError.notFound('Payable record not found');
+
+    const entry = payable.entries.find(
+      (e: any) => e._id?.toString() === entryId || (e as any).id === entryId
+    );
+    if (!entry) throw ApiError.notFound('Payable entry not found');
+    if (entry.isDeleted) throw ApiError.badRequest('Payable entry is already deleted');
+
+    const accountId = entry.accountId ? entry.accountId.toString() : null;
+    if (accountId) {
+      if (entry.type === PayableTransactionType.BORROWED) {
+        await this.accountRepo.adjustBalance(accountId, -entry.amount);
+        payable.totalBorrowed = Math.max(0, payable.totalBorrowed - entry.amount);
+        payable.balancePending = Math.max(0, payable.balancePending - entry.amount);
+      } else if (entry.type === PayableTransactionType.PAID) {
+        await this.accountRepo.adjustBalance(accountId, entry.amount);
+        payable.totalPaid = Math.max(0, payable.totalPaid - entry.amount);
+        payable.balancePending += entry.amount;
+      }
+    }
+
+    payable.status = payable.balancePending <= 0 ? 'SETTLED' : 'ACTIVE';
+    entry.isDeleted = true;
+    entry.deletedAt = new Date();
 
     await payable.save();
     return await this.payableRepo.findById(payableId, 'entries.accountId');

@@ -25,6 +25,9 @@ export interface IDayBookEntry extends Document {
   remarks?: string;
   isEdited?: boolean;
   editLogs?: IEditLog[];
+  isDeleted?: boolean;
+  deletedAt?: Date;
+  deletedReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,6 +61,9 @@ const DayBookEntrySchema = new Schema<IDayBookEntry>(
     remarks: { type: String, trim: true },
     isEdited: { type: Boolean, default: false },
     editLogs: { type: [EditLogSchema], default: [] },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date },
+    deletedReason: { type: String, trim: true },
   },
   { timestamps: true }
 );

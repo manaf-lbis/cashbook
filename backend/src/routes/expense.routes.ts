@@ -12,5 +12,6 @@ router.get('/categories', controller.getCategories);
 router.post('/categories', controller.createCategory);
 router.post('/', validateRequest(CreateExpenseSchema), controller.create);
 router.put('/:id', validateRequest(UpdateExpenseSchema), controller.update);
+router.delete('/:id', controller.delete);
 
 export default router;

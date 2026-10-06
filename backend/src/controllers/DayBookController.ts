@@ -68,4 +68,15 @@ export class DayBookController {
       next(err);
     }
   };
+
+  deleteEntry = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const reason = req.body?.reason || req.query?.reason;
+      const deleted = await this.daybookService.deleteSalesEntry(id, reason as string);
+      return ApiResponse.success(res, deleted, 'Sales entry marked as deleted successfully');
+    } catch (err) {
+      next(err);
+    }
+  };
 }

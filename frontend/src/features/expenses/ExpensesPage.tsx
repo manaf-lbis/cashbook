@@ -8,6 +8,7 @@ import {
   Receipt,
   FolderPlus,
   Tag,
+  Trash2,
 } from 'lucide-react';
 import { apiClient, formatINR, formatDateTime, formatDate } from '../../api/client';
 import { IExpense, IExpenseCategory, ApiResponse } from '../../types';
@@ -107,6 +108,31 @@ export const ExpensesPage: React.FC = () => {
       fetchExpensesForCategory(selectedCategory.name);
     }
   }, [selectedCategory?.name, fetchExpensesForCategory]);
+
+  const handleDeleteExpense = async (exp: IExpense) => {
+    if (exp.isDeleted) return;
+    if (
+      !window.confirm(
+        `Are you sure you want to delete expense "${exp.title}" of ₹${exp.amount.toLocaleString(
+          'en-IN'
+        )}? It will be marked with a red strike, a DELETED badge, and excluded from expense totals.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await apiClient.delete(`/expenses/${exp._id}`);
+      showToast('Expense marked as deleted', 'success');
+      if (selectedCategory) {
+        fetchExpensesForCategory(selectedCategory.name);
+      }
+      fetchCategories();
+      refreshAccounts();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete expense', 'error');
+    }
+  };
 
   // Cumulative Totals
   const totalExpenses = categories.reduce((sum, c) => sum + (c.totalSpent || 0), 0);
@@ -380,40 +406,81 @@ export const ExpensesPage: React.FC = () => {
                   </p>
                 </div>
               ) : (
-                expenses.map((exp) => (
-                  <div
-                    key={exp._id}
-                    className="py-3.5 flex items-center justify-between hover:bg-slate-50/60 transition-colors"
-                  >
-                    {/* Date */}
-                    <div className="w-44 text-xs font-mono text-slate-600">
-                      {formatDateTime(exp.date)}
-                    </div>
-
-                    {/* Title */}
-                    <div className="flex-1 text-sm font-bold text-slate-800 pr-4">
-                      {exp.title}
-                    </div>
-
-                    {/* Amount */}
-                    <div className="w-32 text-right pr-4">
-                      <span className="font-mono font-bold text-base text-rose-600">
-                        -₹{exp.amount.toLocaleString('en-IN')}
-                      </span>
-                    </div>
-
-                    {/* Edit Action */}
-                    <div className="w-12 text-center">
-                      <button
-                        onClick={() => setEditingExpense(exp)}
-                        className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                        title="Edit expense"
+                expenses.map((exp) => {
+                  const isDeleted = !!exp.isDeleted;
+                  return (
+                    <div
+                      key={exp._id}
+                      className={`py-3.5 flex items-center justify-between transition-colors ${
+                        isDeleted ? 'bg-rose-50/40 hover:bg-rose-50/60' : 'hover:bg-slate-50/60'
+                      }`}
+                    >
+                      {/* Date */}
+                      <div
+                        className={`w-44 text-xs font-mono ${
+                          isDeleted
+                            ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                            : 'text-slate-600'
+                        }`}
                       >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
+                        {formatDateTime(exp.date)}
+                      </div>
+
+                      {/* Title */}
+                      <div
+                        className={`flex-1 text-sm font-bold pr-4 flex items-center gap-2 ${
+                          isDeleted ? 'text-slate-400' : 'text-slate-800'
+                        }`}
+                      >
+                        <span className={isDeleted ? 'line-through decoration-rose-500 decoration-2' : ''}>
+                          {exp.title}
+                        </span>
+                        {isDeleted && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs">
+                            DELETED
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Amount */}
+                      <div className="w-32 text-right pr-4">
+                        <span
+                          className={`font-mono font-bold text-base ${
+                            isDeleted
+                              ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                              : 'text-rose-600'
+                          }`}
+                        >
+                          -₹{exp.amount.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="w-20 text-center flex items-center justify-center gap-1">
+                        {!isDeleted ? (
+                          <>
+                            <button
+                              onClick={() => setEditingExpense(exp)}
+                              className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                              title="Edit expense"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteExpense(exp)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Delete expense"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-[11px] text-slate-300 font-semibold">—</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 

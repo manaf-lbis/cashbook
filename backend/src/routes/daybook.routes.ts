@@ -12,5 +12,6 @@ router.get('/billers/:billerId/entries', controller.getEntries);
 router.post('/billers', validateRequest(CreateBillerSchema), controller.createBiller);
 router.post('/entries', validateRequest(CreateDayBookEntrySchema), controller.createEntry);
 router.put('/entries/:id', validateRequest(UpdateDayBookEntrySchema), controller.updateEntry);
+router.delete('/entries/:id', controller.deleteEntry);
 
 export default router;

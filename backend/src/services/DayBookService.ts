@@ -214,6 +214,10 @@ export class DayBookService {
     const entry = await this.daybookRepo.findById(id);
     if (!entry) throw ApiError.notFound('Sales entry not found');
 
+    if (entry.isDeleted) {
+      throw ApiError.badRequest('Cannot edit a deleted sales entry.');
+    }
+
     const monthStatus = this.getMonthStatus(entry.monthKey);
     if (monthStatus === 'LOCKED') {
       throw ApiError.badRequest('Cannot edit entries in locked future months.');
@@ -276,6 +280,50 @@ export class DayBookService {
     if (!entry.editLogs) entry.editLogs = [];
     entry.editLogs.push(editLog);
 
+    await entry.save();
+
+    return await this.daybookRepo.findById(entry._id.toString(), 'accountId');
+  }
+
+  async deleteSalesEntry(id: string, reason?: string) {
+    const entry = await this.daybookRepo.findById(id);
+    if (!entry) throw ApiError.notFound('Sales entry not found');
+
+    if (entry.isDeleted) {
+      throw ApiError.badRequest('Sales entry is already deleted.');
+    }
+
+    const monthStatus = this.getMonthStatus(entry.monthKey);
+    if (monthStatus === 'LOCKED') {
+      throw ApiError.badRequest('Cannot delete entries in locked future months.');
+    }
+    if (monthStatus === 'VIEW_ONLY') {
+      throw ApiError.badRequest('Previous months are view-only and cannot be modified.');
+    }
+
+    // 1. Revert cash counter drawer balance (outflow reversal)
+    const updatedAccount = await this.accountRepo.adjustBalance(entry.accountId.toString(), -entry.amount);
+
+    // 2. Revert biller cumulative total sales
+    await this.billerRepo.adjustTotalSales(entry.billerId.toString(), -entry.amount);
+
+    // 3. Record transaction journal audit
+    await this.transactionRepo.create({
+      accountId: entry.accountId,
+      type: TransactionType.OUTFLOW,
+      amount: entry.amount,
+      source: TransactionSource.DAYBOOK_SALE,
+      description: `Day Book Sale Cancelled / Deleted: Reversed ₹${entry.amount} (Bill #${entry.billNumber || 'N/A'})${
+        reason ? ` - ${reason}` : ''
+      }`,
+      balanceAfter: updatedAccount?.balance ?? 0,
+      date: new Date(),
+    });
+
+    // 4. Mark as deleted (soft delete - keep in database for audit and strike display)
+    entry.isDeleted = true;
+    entry.deletedAt = new Date();
+    if (reason) entry.deletedReason = reason;
     await entry.save();
 
     return await this.daybookRepo.findById(entry._id.toString(), 'accountId');

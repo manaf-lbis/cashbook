@@ -56,6 +56,7 @@ export class DailyClosingService {
     // 3. DAY BOOK: Total sales and biller-wise breakdown for this date
     const dayBookEntries = await DayBookEntryModel.find({
       date: { $gte: startOfDay, $lte: endOfDay },
+      isDeleted: { $ne: true },
     }).populate('billerId', 'name role').populate('accountId', 'name');
 
     const totalDayBookSales = dayBookEntries.reduce((sum, entry) => sum + entry.amount, 0);
@@ -86,6 +87,7 @@ export class DailyClosingService {
 
     for (const credit of creditsWithEntries) {
       for (const entry of credit.entries) {
+        if ((entry as any).isDeleted) continue;
         const eDate = new Date(entry.date);
         if (eDate >= startOfDay && eDate <= endOfDay) {
           if (entry.type === CreditTransactionType.REPAYMENT) {
@@ -108,6 +110,7 @@ export class DailyClosingService {
     // 5. EXPENSE BOOK: Total expenses recorded on this date
     const expenses = await ExpenseModel.find({
       date: { $gte: startOfDay, $lte: endOfDay },
+      isDeleted: { $ne: true },
     }).populate('accountId', 'name');
 
     const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
@@ -424,9 +427,9 @@ export class DailyClosingService {
         const endOfDay = dayjs(dateStr).endOf('day').toDate();
 
         const [dayBookEntries, credits, expenses, cardTxs] = await Promise.all([
-          DayBookEntryModel.find({ date: { $gte: startOfDay, $lte: endOfDay } }),
+          DayBookEntryModel.find({ date: { $gte: startOfDay, $lte: endOfDay }, isDeleted: { $ne: true } }),
           CreditModel.find({ 'entries.date': { $gte: startOfDay, $lte: endOfDay } }),
-          ExpenseModel.find({ date: { $gte: startOfDay, $lte: endOfDay } }),
+          ExpenseModel.find({ date: { $gte: startOfDay, $lte: endOfDay }, isDeleted: { $ne: true } }),
           CreditCardTransactionModel.find({ date: { $gte: startOfDay, $lte: endOfDay } }),
         ]);
 
@@ -437,6 +440,7 @@ export class DailyClosingService {
         let customerCreditGiven = 0;
         for (const c of credits) {
           for (const e of c.entries) {
+            if ((e as any).isDeleted) continue;
             const eD = new Date(e.date);
             if (eD >= startOfDay && eD <= endOfDay) {
               if (e.type === CreditTransactionType.REPAYMENT) customerRepayments += e.amount;

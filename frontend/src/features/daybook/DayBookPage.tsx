@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   Edit3,
   History,
+  Trash2,
 } from 'lucide-react';
 import { apiClient, formatINR, formatDateTime } from '../../api/client';
 import {
@@ -28,6 +29,7 @@ import {
   ApiResponse,
 } from '../../types';
 import { useToast } from '../../context/ToastContext';
+import { useAccounts } from '../../context/AccountContext';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
@@ -155,6 +157,34 @@ export const DayBookPage: React.FC = () => {
       return;
     }
     setSelectedMonthKey(m.monthKey);
+  };
+
+  const { refreshAccounts } = useAccounts();
+
+  const handleDeleteEntry = async (entry: IDayBookEntry) => {
+    if (entry.isDeleted) return;
+    if (
+      !window.confirm(
+        `Are you sure you want to delete this sale entry of ₹${entry.amount.toLocaleString(
+          'en-IN'
+        )}? It will be struck through in red, marked with a DELETED badge, and excluded from all sales calculations.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await apiClient.delete(`/daybook/entries/${entry._id}`);
+      showToast('Sales entry marked as deleted', 'success');
+      fetchBillersForMonth(selectedMonthKey);
+      if (selectedBillerId) {
+        fetchEntriesForBiller(selectedBillerId, selectedMonthKey);
+      }
+      fetchMonths();
+      refreshAccounts();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete sales entry', 'error');
+    }
   };
 
   // Filter & Sort Billers
@@ -528,82 +558,146 @@ export const DayBookPage: React.FC = () => {
                   </p>
                 </div>
               ) : (
-                entries.map((entry) => (
-                  <div
-                    key={entry._id}
-                    className="py-3.5 flex items-center justify-between hover:bg-white/80 transition-colors rounded-lg px-2 group"
-                  >
-                    {/* Date */}
-                    <div className="w-40 text-xs font-mono text-slate-600">
-                      {formatDateTime(entry.date)}
-                    </div>
-
-                    {/* Bill # */}
-                    <div className="w-28 text-xs font-mono">
-                      {entry.billNumber ? (
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200/80">
-                          {entry.billNumber}
-                        </span>
-                      ) : (
-                        <span className="text-slate-300">—</span>
-                      )}
-                    </div>
-
-                    {/* Account / Mode */}
-                    <div className="w-32 text-xs">
-                      <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                        <Wallet className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Cash Drawer</span>
+                entries.map((entry) => {
+                  const isDeleted = !!entry.isDeleted;
+                  return (
+                    <div
+                      key={entry._id}
+                      className={`py-3.5 flex items-center justify-between transition-colors rounded-lg px-2 group ${
+                        isDeleted
+                          ? 'bg-rose-50/40 hover:bg-rose-50/60'
+                          : 'hover:bg-white/80'
+                      }`}
+                    >
+                      {/* Date */}
+                      <div
+                        className={`w-40 text-xs font-mono ${
+                          isDeleted
+                            ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                            : 'text-slate-600'
+                        }`}
+                      >
+                        {formatDateTime(entry.date)}
                       </div>
-                      <p className="text-[11px] text-slate-400 truncate">
-                        Counter Inflow
-                      </p>
-                    </div>
 
-                    {/* Customer / Remarks + Edited Indicator */}
-                    <div className="flex-1 text-xs text-slate-700 pr-4 flex items-center gap-2 overflow-hidden">
-                      <div className="truncate flex-1">
-                        {entry.customerName && (
-                          <span className="font-semibold text-slate-900 mr-2">
-                            {entry.customerName}
+                      {/* Bill # */}
+                      <div className="w-28 text-xs font-mono">
+                        {entry.billNumber ? (
+                          <span
+                            className={`px-2 py-0.5 rounded font-semibold border ${
+                              isDeleted
+                                ? 'bg-slate-100 text-slate-400 border-slate-200 line-through decoration-rose-500 decoration-2'
+                                : 'bg-slate-100 text-slate-700 border-slate-200/80'
+                            }`}
+                          >
+                            {entry.billNumber}
                           </span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
                         )}
-                        <span className="text-slate-500">{entry.remarks || 'Daily Sale'}</span>
                       </div>
-                      {entry.isEdited && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setViewingLogEntry(entry);
-                          }}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold border border-amber-200 flex-shrink-0 cursor-pointer transition-colors shadow-2xs"
-                          title="Click to view edit history log"
-                        >
-                          <History className="w-3 h-3 text-amber-700" />
-                          Edited {entry.editLogs && entry.editLogs.length > 1 ? `(${entry.editLogs.length})` : ''}
-                        </button>
-                      )}
-                    </div>
 
-                    {/* Sale Amount & Actions */}
-                    <div className="w-36 text-right flex items-center justify-end gap-2 pr-1">
-                      <span className="font-mono font-bold text-base text-emerald-600">
-                        +{formatINR(entry.amount)}
-                      </span>
-                      {currentMonthObj?.status === 'ACTIVE' && (
-                        <button
-                          type="button"
-                          onClick={() => setEditingEntry(entry)}
-                          className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                          title="Edit this sale entry"
+                      {/* Account / Mode */}
+                      <div
+                        className={`w-32 text-xs ${
+                          isDeleted ? 'line-through decoration-rose-500 decoration-2 text-slate-400' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-medium text-slate-800">
+                          <Wallet
+                            className={`w-3.5 h-3.5 ${isDeleted ? 'text-slate-400' : 'text-emerald-600'}`}
+                          />
+                          <span className={isDeleted ? 'text-slate-400' : ''}>Cash Drawer</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 truncate">
+                          Counter Inflow
+                        </p>
+                      </div>
+
+                      {/* Customer / Remarks + Edited & Deleted Indicators */}
+                      <div className="flex-1 text-xs pr-4 flex items-center gap-2 overflow-hidden">
+                        <div
+                          className={`truncate flex-1 ${
+                            isDeleted
+                              ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                              : 'text-slate-700'
+                          }`}
                         >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                      )}
+                          {entry.customerName && (
+                            <span
+                              className={`font-semibold mr-2 ${
+                                isDeleted ? 'text-slate-500' : 'text-slate-900'
+                              }`}
+                            >
+                              {entry.customerName}
+                            </span>
+                          )}
+                          <span className={isDeleted ? 'text-slate-400' : 'text-slate-500'}>
+                            {entry.remarks || 'Daily Sale'}
+                          </span>
+                        </div>
+
+                        {isDeleted ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider shadow-2xs shrink-0">
+                            DELETED
+                          </span>
+                        ) : (
+                          entry.isEdited && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setViewingLogEntry(entry);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold border border-amber-200 flex-shrink-0 cursor-pointer transition-colors shadow-2xs"
+                              title="Click to view edit history log"
+                            >
+                              <History className="w-3 h-3 text-amber-700" />
+                              Edited{' '}
+                              {entry.editLogs && entry.editLogs.length > 1
+                                ? `(${entry.editLogs.length})`
+                                : ''}
+                            </button>
+                          )
+                        )}
+                      </div>
+
+                      {/* Sale Amount & Actions */}
+                      <div className="w-36 text-right flex items-center justify-end gap-1.5 pr-1">
+                        <span
+                          className={`font-mono font-bold text-base ${
+                            isDeleted
+                              ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
+                              : 'text-emerald-600'
+                          }`}
+                        >
+                          +{formatINR(entry.amount)}
+                        </span>
+
+                        {!isDeleted && currentMonthObj?.status === 'ACTIVE' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setEditingEntry(entry)}
+                              className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                              title="Edit this sale entry"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteEntry(entry)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Delete this sale entry"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 

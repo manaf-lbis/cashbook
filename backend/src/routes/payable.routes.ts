@@ -11,5 +11,6 @@ router.get('/:id', controller.getById);
 router.post('/borrow', validateRequest(BorrowPayableSchema), controller.borrow);
 router.post('/:id/payback', validateRequest(PayBackPayableSchema), controller.payBack);
 router.put('/:id/entries/:entryId', validateRequest(UpdatePayableEntrySchema), controller.updateEntry);
+router.delete('/:id/entries/:entryId', controller.deleteEntry);
 
 export default router;

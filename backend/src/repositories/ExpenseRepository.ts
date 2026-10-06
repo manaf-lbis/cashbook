@@ -17,7 +17,7 @@ export class ExpenseRepository extends BaseRepository<IExpense> {
   }
 
   async getCategoryBreakdown(startDate?: Date, endDate?: Date): Promise<{ _id: string; totalAmount: number; count: number }[]> {
-    const match: any = {};
+    const match: any = { isDeleted: { $ne: true } };
     if (startDate || endDate) {
       match.date = {};
       if (startDate) match.date.$gte = startDate;
@@ -38,7 +38,7 @@ export class ExpenseRepository extends BaseRepository<IExpense> {
   }
 
   async getTotalExpenses(startDate?: Date, endDate?: Date): Promise<number> {
-    const match: any = {};
+    const match: any = { isDeleted: { $ne: true } };
     if (startDate || endDate) {
       match.date = {};
       if (startDate) match.date.$gte = startDate;
@@ -54,11 +54,12 @@ export class ExpenseRepository extends BaseRepository<IExpense> {
   }
 
   async distinctCategories(): Promise<string[]> {
-    return await this._model.distinct('category');
+    return await this._model.distinct('category', { isDeleted: { $ne: true } });
   }
 
   async getCategoryAggregates(): Promise<{ _id: string; totalSpent: number; count: number; lastExpenseDate: Date | null }[]> {
     return await this._model.aggregate([
+      { $match: { isDeleted: { $ne: true } } },
       {
         $group: {
           _id: '$category',

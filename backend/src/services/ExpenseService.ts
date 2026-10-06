@@ -90,6 +90,7 @@ export class ExpenseService {
   ) {
     const expense = await this.expenseRepo.findById(id);
     if (!expense) throw ApiError.notFound('Expense not found');
+    if (expense.isDeleted) throw ApiError.badRequest('Cannot edit a deleted expense.');
 
     const previousAmount = expense.amount;
     const newAmount = dto.amount !== undefined ? dto.amount : previousAmount;
@@ -130,7 +131,30 @@ export class ExpenseService {
   }
 
   async deleteExpense(id: string) {
-    throw ApiError.badRequest('Delete operation is disabled. Only editing entries is permitted.');
+    const expense = await this.expenseRepo.findById(id);
+    if (!expense) throw ApiError.notFound('Expense not found');
+    if (expense.isDeleted) throw ApiError.badRequest('Expense is already deleted');
+
+    // Reverse account deduction: money goes back into the drawer
+    const updatedAccount = await this.accountRepo.adjustBalance(expense.accountId.toString(), expense.amount);
+
+    // Record master journal audit
+    await this.transactionRepo.create({
+      accountId: expense.accountId,
+      type: TransactionType.INFLOW,
+      amount: expense.amount,
+      source: TransactionSource.EXPENSE,
+      referenceId: expense._id,
+      description: `Expense Cancelled / Deleted: Reversed ₹${expense.amount} (${expense.title})`,
+      balanceAfter: updatedAccount?.balance ?? 0,
+      date: new Date(),
+    });
+
+    expense.isDeleted = true;
+    expense.deletedAt = new Date();
+    await expense.save();
+
+    return expense;
   }
 
   async getExpenses(filter: any = {}, limit = 100, skip = 0) {

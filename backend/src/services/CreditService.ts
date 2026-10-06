@@ -172,6 +172,7 @@ export class CreditService {
       (e: any) => e._id?.toString() === entryId || (e as any).id === entryId
     );
     if (!entry) throw ApiError.notFound('Credit entry not found');
+    if (entry.isDeleted) throw ApiError.badRequest('Cannot edit a deleted credit entry.');
 
     const previousAmount = entry.amount;
     const newAmount = dto.amount !== undefined ? dto.amount : previousAmount;
@@ -200,6 +201,37 @@ export class CreditService {
     entry.amount = newAmount;
     if (dto.remarks !== undefined) entry.remarks = dto.remarks.trim();
     if (dto.date) entry.date = new Date(dto.date);
+
+    await credit.save();
+    return await this.creditRepo.findById(creditId, 'entries.accountId');
+  }
+
+  async deleteCreditEntry(creditId: string, entryId: string) {
+    const credit = await this.creditRepo.findById(creditId);
+    if (!credit) throw ApiError.notFound('Credit record not found');
+
+    const entry = credit.entries.find(
+      (e: any) => e._id?.toString() === entryId || (e as any).id === entryId
+    );
+    if (!entry) throw ApiError.notFound('Credit entry not found');
+    if (entry.isDeleted) throw ApiError.badRequest('Credit entry is already deleted');
+
+    const accountId = entry.accountId ? entry.accountId.toString() : null;
+    if (accountId) {
+      if (entry.type === CreditTransactionType.GIVEN) {
+        await this.accountRepo.adjustBalance(accountId, entry.amount);
+        credit.totalGiven = Math.max(0, credit.totalGiven - entry.amount);
+        credit.balanceDue = Math.max(0, credit.balanceDue - entry.amount);
+      } else if (entry.type === CreditTransactionType.REPAYMENT) {
+        await this.accountRepo.adjustBalance(accountId, -entry.amount);
+        credit.totalRepaid = Math.max(0, credit.totalRepaid - entry.amount);
+        credit.balanceDue += entry.amount;
+      }
+    }
+
+    credit.status = credit.balanceDue <= 0 ? 'SETTLED' : 'ACTIVE';
+    entry.isDeleted = true;
+    entry.deletedAt = new Date();
 
     await credit.save();
     return await this.creditRepo.findById(creditId, 'entries.accountId');
