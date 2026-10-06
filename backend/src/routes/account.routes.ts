@@ -11,6 +11,6 @@ router.get('/liquidity', controller.getLiquidity);
 router.post('/', validateRequest(CreateAccountSchema), controller.create);
 router.post('/transfer', validateRequest(TransferFundsSchema), controller.transfer);
 router.put('/:id', controller.update);
-// Deletions are strictly disabled across the application
+router.delete('/:id', controller.delete);
 
 export default router;

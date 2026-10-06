@@ -67,7 +67,13 @@ export class AccountService {
   }
 
   async deleteAccount(id: string) {
-    throw ApiError.badRequest('Delete operation is disabled across the application. Only editing entries is permitted.');
+    const account = await this.accountRepo.findById(id);
+    if (!account) throw ApiError.notFound('Account not found');
+    if (account.isDefaultCash || account.type === AccountType.CASH) {
+      throw ApiError.badRequest('Default Cash in Hand account cannot be deactivated');
+    }
+    const updated = await this.accountRepo.update(id, { isActive: false });
+    return updated;
   }
 
   async getLiquiditySummary() {
