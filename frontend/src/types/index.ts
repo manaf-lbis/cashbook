@@ -410,8 +410,8 @@ export interface ITimelineDay {
   expenseTotal: number;
   creditCardNet: number;
   expectedClosingBalance: number;
-  actualClosingBalance: number;
-  variance: number;
+  actualClosingBalance: number | null;
+  variance: number | null;
   grossCashAvailable: number;
   cardLiabilities: number;
   payableLiabilities: number;
@@ -425,8 +425,13 @@ export interface ITimelineDay {
 export interface ITimelineMetrics {
   totalDays: number;
   closedCount: number;
+  balancedCount?: number;
+  discrepancyCount?: number;
   notClosedCount: number;
   openingCount: number;
+  totalPeriodSales?: number;
+  totalPeriodExpenses?: number;
+  totalNetVariance?: number;
   currentGrossCash: number;
   totalCardDebt: number;
   totalPayableDebt: number;

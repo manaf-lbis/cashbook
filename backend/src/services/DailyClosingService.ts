@@ -354,7 +354,7 @@ export class DailyClosingService {
    * - Not closed days (past days with activity where user failed to close)
    * - Opening only days (past days with no activity)
    * - Active open day (today)
-   * With Gross Cash available, credit card liabilities, and True Net Cash balance.
+   * Rolls forward chronologically from oldest to newest, then presents newest first.
    */
   async getTimelineHistory(daysCount = 14) {
     const todayStr = dayjs().format('YYYY-MM-DD');
@@ -374,25 +374,46 @@ export class DailyClosingService {
     const currentNetLiquidCash = currentGrossLiquidCash - totalLiabilities;
 
     // 3. Find all saved closings
-    const savedClosings = await DailyClosingModel.find().sort({ date: -1 }).limit(100);
+    const savedClosings = await DailyClosingModel.find().sort({ date: -1 }).limit(365);
     const savedMap = new Map<string, IDailyClosing>();
     for (const c of savedClosings) {
       savedMap.set(c.date, c);
     }
 
-    // 4. Generate dates from today going backwards
+    // 4. Generate dates in chronological order (oldest to newest)
+    const dates: string[] = [];
+    for (let i = daysCount - 1; i >= 0; i--) {
+      dates.push(dayjs().subtract(i, 'day').format('YYYY-MM-DD'));
+    }
+
+    // 5. Baseline opening balance before dates[0]
+    let runningOpening = 0;
+    const priorClosing = await DailyClosingModel.findOne({ date: { $lt: dates[0] } }).sort({ date: -1 });
+    if (priorClosing) {
+      runningOpening = priorClosing.actualClosingBalance;
+    } else {
+      const firstSaved = savedMap.get(dates[0]);
+      if (firstSaved) {
+        runningOpening = firstSaved.openingBalance;
+      } else {
+        const earliestClosing = await DailyClosingModel.findOne().sort({ date: 1 });
+        if (earliestClosing && dates[0] >= earliestClosing.date) {
+          runningOpening = earliestClosing.actualClosingBalance;
+        } else {
+          runningOpening = 0;
+        }
+      }
+    }
+
     const timeline = [];
-    const latestSaved = savedClosings.length > 0 ? savedClosings[0] : null;
-    let rollingOpening = latestSaved ? latestSaved.actualClosingBalance : currentGrossLiquidCash;
 
-    for (let i = 0; i < daysCount; i++) {
-      const dateStr = dayjs().subtract(i, 'day').format('YYYY-MM-DD');
+    // 6. Chronological forward roll
+    for (const dateStr of dates) {
       const isToday = dateStr === todayStr;
-
       const saved = savedMap.get(dateStr);
 
       if (saved) {
-        const isBalanced = saved.status === 'BALANCED';
+        const isBalanced = saved.status === 'BALANCED' || saved.variance === 0;
         const grossCash = saved.actualClosingBalance;
         const netCash = grossCash - totalCardDebt;
 
@@ -405,8 +426,8 @@ export class DailyClosingService {
           openingBalance: saved.openingBalance,
           dayBookSales: saved.dayBookSales,
           customerNet: saved.customerNet,
-          customerRepayments: saved.customerRepayments,
-          customerCreditGiven: saved.customerCreditGiven,
+          customerRepayments: saved.customerRepayments || 0,
+          customerCreditGiven: saved.customerCreditGiven || 0,
           expenseTotal: saved.expenseTotal,
           creditCardNet: saved.creditCardNet,
           expectedClosingBalance: saved.expectedClosingBalance,
@@ -421,8 +442,11 @@ export class DailyClosingService {
           notes: saved.notes || '',
           closedAt: saved.closedAt,
         });
+
+        // The actual counted closing balance rolls into the next day's opening
+        runningOpening = saved.actualClosingBalance;
       } else {
-        // Not saved yet: check live activity on that day
+        // Not saved yet: check ledger activity on that day
         const startOfDay = dayjs(dateStr).startOf('day').toDate();
         const endOfDay = dayjs(dateStr).endOf('day').toDate();
 
@@ -459,10 +483,8 @@ export class DailyClosingService {
           }
         }
 
-        const hasActivity = dayBookSales > 0 || expenseTotal > 0 || credits.length > 0 || cardTxs.length > 0;
-        const expected = rollingOpening + dayBookSales + customerNet - expenseTotal + cardNet;
-        const grossCash = expected;
-        const netCash = grossCash - totalCardDebt;
+        const hasActivity = dayBookSales > 0 || expenseTotal > 0 || customerRepayments > 0 || customerCreditGiven > 0 || cardTxs.length > 0;
+        const expected = runningOpening + dayBookSales + customerNet - expenseTotal + cardNet;
 
         let status: 'OPENING' | 'NOT_CLOSED' | 'OPENING_ONLY';
         let displayStatus: string;
@@ -484,7 +506,7 @@ export class DailyClosingService {
           displayStatus,
           isSaved: false,
           isToday,
-          openingBalance: rollingOpening,
+          openingBalance: runningOpening,
           dayBookSales,
           customerNet,
           customerRepayments,
@@ -492,29 +514,48 @@ export class DailyClosingService {
           expenseTotal,
           creditCardNet: cardNet,
           expectedClosingBalance: expected,
-          actualClosingBalance: grossCash,
-          variance: 0,
-          grossCashAvailable: grossCash,
+          actualClosingBalance: null,
+          variance: null,
+          grossCashAvailable: expected,
           cardLiabilities: totalCardDebt,
           payableLiabilities: totalPayableDebt,
           totalLiabilities,
-          netCashBalance: netCash,
+          netCashBalance: expected - totalCardDebt,
           manualSplitUps: [],
-          notes: isToday ? 'Active day open' : hasActivity ? 'Closed failed / not finalized by user' : 'No entries recorded',
+          notes: isToday ? 'Active day open' : hasActivity ? 'Closing was missed / not finalized' : 'No entries recorded',
         });
+
+        // For an unclosed day, roll expected cash forward into next day's opening
+        runningOpening = expected;
       }
     }
 
-    const closedCount = timeline.filter((t) => t.status.startsWith('CLOSED')).length;
+    // 7. Reverse so newest (today) is at the top
+    timeline.reverse();
+
+    // 8. Compute Period Audit Metrics
+    const closedDays = timeline.filter((t) => t.isSaved && t.status.startsWith('CLOSED'));
+    const closedCount = closedDays.length;
+    const balancedCount = closedDays.filter((t) => t.status === 'CLOSED_BALANCED' || t.variance === 0).length;
+    const discrepancyCount = closedDays.filter((t) => t.status === 'CLOSED_DISCREPANCY' || (t.variance !== null && t.variance !== 0)).length;
     const notClosedCount = timeline.filter((t) => t.status === 'NOT_CLOSED').length;
     const openingCount = timeline.filter((t) => t.status === 'OPENING' || t.status === 'OPENING_ONLY').length;
+
+    const totalPeriodSales = timeline.reduce((sum, t) => sum + (t.dayBookSales || 0), 0);
+    const totalPeriodExpenses = timeline.reduce((sum, t) => sum + (t.expenseTotal || 0), 0);
+    const totalNetVariance = closedDays.reduce((sum, t) => sum + (t.variance || 0), 0);
 
     return {
       metrics: {
         totalDays: timeline.length,
         closedCount,
+        balancedCount,
+        discrepancyCount,
         notClosedCount,
         openingCount,
+        totalPeriodSales,
+        totalPeriodExpenses,
+        totalNetVariance,
         currentGrossCash: currentGrossLiquidCash,
         totalCardDebt,
         totalPayableDebt,
