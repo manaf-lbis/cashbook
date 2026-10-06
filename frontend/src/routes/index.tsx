@@ -25,9 +25,6 @@ const DayBookPage = lazy(() =>
 const DailyClosingPage = lazy(() =>
   import('../features/daily-closing/DailyClosingPage').then((m) => ({ default: m.DailyClosingPage }))
 );
-const SettingsPage = lazy(() =>
-  import('../features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage }))
-);
 
 const SuspenseWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <Suspense fallback={<LoadingSpinner message="Loading feature module..." />}>
@@ -93,14 +90,6 @@ export const router = createBrowserRouter([
         element: (
           <SuspenseWrapper>
             <CreditCardsPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'settings',
-        element: (
-          <SuspenseWrapper>
-            <SettingsPage />
           </SuspenseWrapper>
         ),
       },

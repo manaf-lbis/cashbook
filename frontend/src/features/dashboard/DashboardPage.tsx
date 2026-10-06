@@ -143,7 +143,7 @@ export const DashboardPage: React.FC = () => {
             icon={<Wallet className="w-5 h-5" />}
             iconBgColor="bg-emerald-50"
             iconTextColor="text-emerald-600"
-            onClick={() => navigate('/settings')}
+            onClick={() => navigate('/daily-closing')}
           />
 
           {/* Card 2: Receivables (Credits Given) */}
