@@ -16,7 +16,7 @@ import {
   CalendarDays,
   Plus,
 } from 'lucide-react';
-import { apiClient, formatINR, formatDateTime } from '../../api/client';
+import { apiClient, formatINR, formatDateTime, formatEntryDateTime } from '../../api/client';
 import { IDashboardSummary, ApiResponse, TransactionType } from '../../types';
 import { useAccounts } from '../../context/AccountContext';
 import { StatCard } from '../../components/ui/StatCard';
@@ -360,7 +360,7 @@ export const DashboardPage: React.FC = () => {
                   {recentTransactions.slice(0, 8).map((tx) => (
                     <tr key={tx._id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="py-2.5 px-3 text-slate-500 font-mono text-[11px]">
-                        {formatDateTime(tx.date)}
+                        {formatEntryDateTime(tx.date, (tx as any).createdAt)}
                       </td>
                       <td className="py-2.5 px-3 font-medium text-slate-800">
                         {tx.accountId?.name || 'Account'}

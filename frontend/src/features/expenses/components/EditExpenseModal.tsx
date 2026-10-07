@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
-import { apiClient } from '../../../api/client';
+import { apiClient, getLocalDateString, getLocalTimeString } from '../../../api/client';
 import { useToast } from '../../../context/ToastContext';
 import { useAccounts } from '../../../context/AccountContext';
 import { IExpense } from '../../../types';
@@ -24,12 +24,17 @@ export const EditExpenseModal: React.FC<EditExpenseModalProps> = ({
   const { refreshAccounts } = useAccounts();
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (expense) {
       setTitle(expense.title);
       setAmount(expense.amount.toString());
+      const expDate = expense.date ? new Date(expense.date) : new Date();
+      setDate(getLocalDateString(expDate));
+      setTime(getLocalTimeString(expDate));
     }
   }, [expense, isOpen]);
 
@@ -49,9 +54,16 @@ export const EditExpenseModal: React.FC<EditExpenseModalProps> = ({
 
     try {
       setLoading(true);
+      let submitDate: string | undefined = undefined;
+      if (date) {
+        const localDateTime = new Date(`${date}T${time || '12:00'}:00`);
+        submitDate = !isNaN(localDateTime.getTime()) ? localDateTime.toISOString() : undefined;
+      }
+
       await apiClient.put(`/expenses/${expense._id}`, {
         title: title.trim(),
         amount: numAmount,
+        date: submitDate,
       });
 
       showToast(`Expense updated!`, 'success');
@@ -93,6 +105,21 @@ export const EditExpenseModal: React.FC<EditExpenseModalProps> = ({
           min="0.01"
           step="any"
         />
+
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+          <Input
+            label="Time"
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+          />
+        </div>
 
         {parseFloat(amount) !== expense.amount && !isNaN(parseFloat(amount)) && (
           <p className="text-xs text-amber-600 font-medium">

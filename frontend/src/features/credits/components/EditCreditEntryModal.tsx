@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
-import { apiClient } from '../../../api/client';
+import { apiClient, getLocalDateString, getLocalTimeString } from '../../../api/client';
 import { useToast } from '../../../context/ToastContext';
 import { useAccounts } from '../../../context/AccountContext';
 import { ICreditEntry, CreditTransactionType } from '../../../types';
@@ -29,13 +29,16 @@ export const EditCreditEntryModal: React.FC<EditCreditEntryModalProps> = ({
   const [amount, setAmount] = useState('');
   const [remarks, setRemarks] = useState('');
   const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (entry) {
       setAmount(entry.amount.toString());
       setRemarks(entry.remarks || '');
-      setDate(entry.date ? new Date(entry.date).toISOString().split('T')[0] : '');
+      const entryDate = entry.date ? new Date(entry.date) : new Date();
+      setDate(getLocalDateString(entryDate));
+      setTime(getLocalTimeString(entryDate));
     }
   }, [entry, isOpen]);
 
@@ -53,10 +56,16 @@ export const EditCreditEntryModal: React.FC<EditCreditEntryModalProps> = ({
 
     try {
       setLoading(true);
+      let submitDate: string | undefined = undefined;
+      if (date) {
+        const localDateTime = new Date(`${date}T${time || '12:00'}:00`);
+        submitDate = !isNaN(localDateTime.getTime()) ? localDateTime.toISOString() : undefined;
+      }
+
       await apiClient.put(`/credits/${creditId}/entries/${entry._id}`, {
         amount: numAmount,
         remarks: remarks.trim() || undefined,
-        date: date ? new Date(date).toISOString() : undefined,
+        date: submitDate,
       });
 
       showToast('Entry updated successfully', 'success');
@@ -98,12 +107,20 @@ export const EditCreditEntryModal: React.FC<EditCreditEntryModalProps> = ({
           onChange={(e) => setRemarks(e.target.value)}
         />
 
-        <Input
-          label="Date"
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+          <Input
+            label="Time"
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+          />
+        </div>
 
         {parseFloat(amount) !== entry.amount && !isNaN(parseFloat(amount)) && (
           <p className="text-xs text-amber-600 font-medium">

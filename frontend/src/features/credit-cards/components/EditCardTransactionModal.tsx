@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
-import { apiClient } from '../../../api/client';
+import { apiClient, getLocalDateString, getLocalTimeString } from '../../../api/client';
 import { useToast } from '../../../context/ToastContext';
 import { useAccounts } from '../../../context/AccountContext';
 import { ICreditCardTransaction, CreditCardTransactionType } from '../../../types';
@@ -27,13 +27,16 @@ export const EditCardTransactionModal: React.FC<EditCardTransactionModalProps> =
   const [amount, setAmount] = useState('');
   const [remarks, setRemarks] = useState('');
   const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (transaction) {
       setAmount(transaction.amount.toString());
       setRemarks(transaction.remarks || '');
-      setDate(transaction.date ? new Date(transaction.date).toISOString().split('T')[0] : '');
+      const txDate = transaction.date ? new Date(transaction.date) : new Date();
+      setDate(getLocalDateString(txDate));
+      setTime(getLocalTimeString(txDate));
     }
   }, [transaction, isOpen]);
 
@@ -51,11 +54,17 @@ export const EditCardTransactionModal: React.FC<EditCardTransactionModalProps> =
 
     try {
       setLoading(true);
+      let submitDate: string | undefined = undefined;
+      if (date) {
+        const localDateTime = new Date(`${date}T${time || '12:00'}:00`);
+        submitDate = !isNaN(localDateTime.getTime()) ? localDateTime.toISOString() : undefined;
+      }
+
       await apiClient.put(`/credit-cards/transactions/${transaction._id}`, {
         amount: numAmount,
         remarks: remarks.trim() || undefined,
         description: remarks.trim() || undefined,
-        date: date ? new Date(date).toISOString() : undefined,
+        date: submitDate,
       });
 
       showToast('Card entry updated successfully', 'success');
@@ -97,12 +106,20 @@ export const EditCardTransactionModal: React.FC<EditCardTransactionModalProps> =
           onChange={(e) => setRemarks(e.target.value)}
         />
 
-        <Input
-          label="Date"
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+          <Input
+            label="Time"
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+          />
+        </div>
 
         {parseFloat(amount) !== transaction.amount && !isNaN(parseFloat(amount)) && (
           <p className="text-xs text-amber-600 font-medium">

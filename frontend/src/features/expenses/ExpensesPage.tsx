@@ -11,7 +11,7 @@ import {
   Trash2,
   Lock,
 } from 'lucide-react';
-import { apiClient, formatINR, formatDateTime, formatDate } from '../../api/client';
+import { apiClient, formatINR, formatDateTime, formatDate, formatEntryDateTime } from '../../api/client';
 import { IExpense, IExpenseCategory, ApiResponse } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
@@ -440,7 +440,7 @@ export const ExpensesPage: React.FC = () => {
                         {/* Bottom: Date/Time, Badges & Actions */}
                         <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-100 text-slate-500">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-mono text-[11px] text-slate-500">{formatDateTime(exp.date)}</span>
+                            <span className="font-mono text-[11px] text-slate-500">{formatEntryDateTime(exp.date, exp.createdAt)}</span>
                             {exp.isReconciled && !isDeleted && (
                               <span
                                 className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-300 uppercase"
@@ -504,7 +504,7 @@ export const ExpensesPage: React.FC = () => {
                               : 'text-slate-600'
                           }`}
                         >
-                          {formatDateTime(exp.date)}
+                          {formatEntryDateTime(exp.date, exp.createdAt)}
                         </div>
 
                         {/* Title */}

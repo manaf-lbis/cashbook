@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import { ICreditCard, ICreditCardTransaction, CreditCardTransactionType, ApiResponse } from '../../../types';
-import { apiClient, formatINR, formatDateTime } from '../../../api/client';
+import { apiClient, formatINR, formatDateTime, formatEntryDateTime } from '../../../api/client';
 import { Badge } from '../../../components/ui/Badge';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 
@@ -70,7 +70,7 @@ export const CardLedgerModal: React.FC<CardLedgerModalProps> = ({
                   transactions.map((tx) => (
                     <tr key={tx._id} className="hover:bg-slate-50">
                       <td className="py-2.5 px-3 font-mono text-slate-500">
-                        {formatDateTime(tx.date)}
+                        {formatEntryDateTime(tx.date, (tx as any).createdAt)}
                       </td>
                       <td className="py-2.5 px-3">
                         <Badge

@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { formatDateIST, getTodayIST, TIMEZONE } from '../utils/dateUtils';
 import { DailyClosingModel } from '../models/DailyClosing';
 import { ApiError } from '../utils/ApiError';
 
@@ -28,7 +29,7 @@ export class ReconciliationLockService {
     entryDate: Date | string,
     entryCreatedAt?: Date | string
   ): Promise<ILockStatus> {
-    const entryDateStr = dayjs(entryDate).format('YYYY-MM-DD');
+    const entryDateStr = formatDateIST(entryDate);
     const entryTime = entryCreatedAt ? new Date(entryCreatedAt).getTime() : new Date(entryDate).getTime();
 
     // 1. Check if there is a daily closing for this exact date
@@ -37,7 +38,7 @@ export class ReconciliationLockService {
       const closedAtTime = new Date(closingOnDate.closedAt).getTime();
 
       if (entryTime <= closedAtTime) {
-        const timeFormatted = dayjs(closingOnDate.closedAt).format('hh:mm A');
+        const timeFormatted = dayjs(closingOnDate.closedAt).tz(TIMEZONE).format('hh:mm A');
         return {
           isLocked: true,
           reason: `Locked: This entry was reconciled in Daily Closing on ${entryDateStr} at ${timeFormatted}. Modifying or deleting entries recorded prior to reconciliation is blocked to preserve audit integrity.`,
@@ -50,7 +51,7 @@ export class ReconciliationLockService {
       // Check if a later closing exists on a subsequent date
       const laterClosing = await DailyClosingModel.findOne({ date: { $gt: entryDateStr } }).sort({ date: 1 });
       if (laterClosing && laterClosing.closedAt) {
-        const laterTimeFormatted = dayjs(laterClosing.closedAt).format('hh:mm A');
+        const laterTimeFormatted = dayjs(laterClosing.closedAt).tz(TIMEZONE).format('hh:mm A');
         return {
           isLocked: true,
           reason: `Locked: This entry belongs to a past period that was subsequently closed on ${laterClosing.date} (${laterTimeFormatted}). Modifying or deleting past entries is blocked.`,
@@ -67,7 +68,7 @@ export class ReconciliationLockService {
     // Check if any closing exists on a LATER date
     const laterClosing = await DailyClosingModel.findOne({ date: { $gt: entryDateStr } }).sort({ date: 1 });
     if (laterClosing && laterClosing.closedAt) {
-      const laterTimeFormatted = dayjs(laterClosing.closedAt).format('hh:mm A');
+      const laterTimeFormatted = dayjs(laterClosing.closedAt).tz(TIMEZONE).format('hh:mm A');
       return {
         isLocked: true,
         reason: `Locked: This entry belongs to a past unclosed period prior to Daily Closing on ${laterClosing.date} (${laterTimeFormatted}). Modifying or deleting past entries is blocked.`,
@@ -98,8 +99,8 @@ export class ReconciliationLockService {
    * Creating entries on today's active date is always allowed.
    */
   static async assertCanCreateEntry(targetDate: Date | string) {
-    const todayStr = dayjs().format('YYYY-MM-DD');
-    const targetDateStr = dayjs(targetDate).format('YYYY-MM-DD');
+    const todayStr = getTodayIST();
+    const targetDateStr = formatDateIST(targetDate);
 
     // Creating entries on today is always permitted
     if (targetDateStr === todayStr) {
@@ -152,7 +153,7 @@ export class ReconciliationLockService {
       const entryId = entry._id?.toString();
       if (!entryId) continue;
 
-      const entryDateStr = dayjs(entry.date).format('YYYY-MM-DD');
+      const entryDateStr = formatDateIST(entry.date);
       const entryTime = entry.createdAt
         ? new Date(entry.createdAt).getTime()
         : new Date(entry.date).getTime();

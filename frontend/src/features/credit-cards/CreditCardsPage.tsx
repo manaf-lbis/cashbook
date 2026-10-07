@@ -7,7 +7,7 @@ import {
   Plus,
   Edit3,
 } from 'lucide-react';
-import { apiClient, formatINR, formatDate, formatDateTime } from '../../api/client';
+import { apiClient, formatINR, formatDate, formatDateTime, formatEntryDateTime } from '../../api/client';
 import { ICreditCard, ICreditCardTransaction, CreditCardTransactionType, ApiResponse } from '../../types';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
@@ -506,7 +506,7 @@ export const CreditCardsPage: React.FC = () => {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-slate-800 font-mono">
-                            {formatDateTime(tx.date)}
+                            {formatEntryDateTime(tx.date, (tx as any).createdAt)}
                           </p>
                           <p className="text-[11px] text-slate-400 mt-0.5">
                             Card Balance: ₹{tx.balanceAfter.toLocaleString('en-IN')}
@@ -559,7 +559,7 @@ export const CreditCardsPage: React.FC = () => {
                     <div className="hidden sm:flex py-3.5 items-center justify-between hover:bg-slate-50/50 transition-colors">
                       <div>
                         <p className="text-sm font-bold text-slate-800 font-mono">
-                          {formatDateTime(tx.date)}
+                          {formatEntryDateTime(tx.date, (tx as any).createdAt)}
                         </p>
                         <p className="text-xs text-slate-400 mt-0.5">
                           Card Balance: ₹{tx.balanceAfter.toLocaleString('en-IN')}

@@ -9,7 +9,7 @@ import {
   Trash2,
   Lock,
 } from 'lucide-react';
-import { apiClient, formatINR, formatDate, formatDateTime } from '../../api/client';
+import { apiClient, formatINR, formatDate, formatDateTime, formatEntryDateTime } from '../../api/client';
 import { IPayable, IPayableEntry, PayableTransactionType, ApiResponse } from '../../types';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
@@ -508,7 +508,7 @@ export const PayablesPage: React.FC = () => {
                                     : 'text-slate-800'
                                 }`}
                               >
-                                {formatDateTime(entry.date)}
+                                {formatEntryDateTime(entry.date, (entry as any).createdAt)}
                               </span>
                               {entry.isReconciled && !isDeleted && (
                                 <span
@@ -616,7 +616,7 @@ export const PayablesPage: React.FC = () => {
                                   : 'text-slate-800'
                               }`}
                             >
-                              {formatDateTime(entry.date)}
+                              {formatEntryDateTime(entry.date, (entry as any).createdAt)}
                             </p>
                             {entry.isReconciled && !isDeleted && (
                               <span

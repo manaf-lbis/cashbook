@@ -5,6 +5,7 @@ import { ExpenseCategoryModel } from '../models/ExpenseCategory';
 import { AccountType, TransactionType, TransactionSource } from '../constants/enums';
 import { ApiError } from '../utils/ApiError';
 import { ReconciliationLockService } from './ReconciliationLockService';
+import { parseEntryDate } from '../utils/dateUtils';
 import dayjs from 'dayjs';
 
 export class ExpenseService {
@@ -41,7 +42,7 @@ export class ExpenseService {
       throw ApiError.badRequest(`Insufficient balance in ${account.name}. Available: ₹${account.balance}`);
     }
 
-    const expDate = dto.date || new Date();
+    const expDate = parseEntryDate(dto.date);
     await ReconciliationLockService.assertCanCreateEntry(expDate);
     const finalCategory = dto.category || 'Other Expenses';
 
@@ -132,7 +133,7 @@ export class ExpenseService {
     if (dto.title?.trim()) expense.title = dto.title.trim();
     if (dto.amount !== undefined) expense.amount = newAmount;
     if (dto.category?.trim()) expense.category = dto.category.trim();
-    if (dto.date) expense.date = new Date(dto.date);
+    if (dto.date) expense.date = parseEntryDate(dto.date);
 
     await expense.save();
     return expense;

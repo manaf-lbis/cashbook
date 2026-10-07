@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import { IPayable, PayableTransactionType } from '../../../types';
-import { formatINR, formatDateTime } from '../../../api/client';
+import { formatINR, formatDateTime, formatEntryDateTime } from '../../../api/client';
 import { Badge } from '../../../components/ui/Badge';
 
 interface PayableLedgerModalProps {
@@ -62,7 +62,7 @@ export const PayableLedgerModal: React.FC<PayableLedgerModalProps> = ({
                 payable.entries.map((entry, idx) => (
                   <tr key={entry._id || idx} className="hover:bg-slate-50">
                     <td className="py-2.5 px-3 font-mono text-slate-500">
-                      {formatDateTime(entry.date)}
+                      {formatEntryDateTime(entry.date, (entry as any).createdAt)}
                     </td>
                     <td className="py-2.5 px-3">
                       <Badge

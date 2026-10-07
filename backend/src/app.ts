@@ -8,6 +8,7 @@ import { errorHandler } from './middlewares/errorHandler';
 import { mongoSanitize } from './middlewares/mongoSanitize';
 import { ApiError } from './utils/ApiError';
 import { ENV } from './config/env';
+import './utils/dateUtils';
 
 export const createApp = (): Application => {
   const app = express();

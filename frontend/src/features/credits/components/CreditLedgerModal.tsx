@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import { ICredit, CreditTransactionType } from '../../../types';
-import { formatINR, formatDateTime } from '../../../api/client';
+import { formatINR, formatDateTime, formatEntryDateTime } from '../../../api/client';
 import { Badge } from '../../../components/ui/Badge';
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 
@@ -63,7 +63,7 @@ export const CreditLedgerModal: React.FC<CreditLedgerModalProps> = ({
                 credit.entries.map((entry, idx) => (
                   <tr key={entry._id || idx} className="hover:bg-slate-50">
                     <td className="py-2.5 px-3 font-mono text-slate-500">
-                      {formatDateTime(entry.date)}
+                      {formatEntryDateTime(entry.date, (entry as any).createdAt)}
                     </td>
                     <td className="py-2.5 px-3">
                       <Badge

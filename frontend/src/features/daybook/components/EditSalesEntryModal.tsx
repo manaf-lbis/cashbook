@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Edit3, History, Check, Clock } from 'lucide-react';
-import { apiClient, formatINR, formatDateTime } from '../../../api/client';
+import { apiClient, formatINR, formatDateTime, getLocalDateString, getLocalTimeString } from '../../../api/client';
 import { useToast } from '../../../context/ToastContext';
 import { useAccounts } from '../../../context/AccountContext';
 import { IDayBookEntry } from '../../../types';
@@ -27,6 +27,7 @@ export const EditSalesEntryModal: React.FC<EditSalesEntryModalProps> = ({
   const [customerName, setCustomerName] = useState('');
   const [billNumber, setBillNumber] = useState('');
   const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
   const [note, setNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -37,7 +38,9 @@ export const EditSalesEntryModal: React.FC<EditSalesEntryModalProps> = ({
       setDescription(entry.remarks || '');
       setCustomerName(entry.customerName || '');
       setBillNumber(entry.billNumber || '');
-      setDate(entry.date ? new Date(entry.date).toISOString().split('T')[0] : '');
+      const entryDate = entry.date ? new Date(entry.date) : new Date();
+      setDate(getLocalDateString(entryDate));
+      setTime(getLocalTimeString(entryDate));
       setNote('');
       setShowHistory(false);
     }
@@ -55,13 +58,19 @@ export const EditSalesEntryModal: React.FC<EditSalesEntryModalProps> = ({
 
     try {
       setIsSubmitting(true);
+      let submitDate: string | undefined = undefined;
+      if (date) {
+        const localDateTime = new Date(`${date}T${time || '12:00'}:00`);
+        submitDate = !isNaN(localDateTime.getTime()) ? localDateTime.toISOString() : undefined;
+      }
+
       const res = await apiClient.put(`/daybook/entries/${entry._id}`, {
         amount: numAmount,
         remarks: description.trim() || undefined,
         description: description.trim() || undefined,
         customerName: customerName.trim() || undefined,
         billNumber: billNumber.trim() || undefined,
-        date: date ? new Date(date).toISOString() : undefined,
+        date: submitDate,
         note: note.trim() || undefined,
       });
 
@@ -154,7 +163,7 @@ export const EditSalesEntryModal: React.FC<EditSalesEntryModalProps> = ({
               />
             </div>
 
-            {/* Date */}
+            {/* Date & Time */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -170,16 +179,29 @@ export const EditSalesEntryModal: React.FC<EditSalesEntryModalProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Bill / Token #
+                  Sale Time
                 </label>
                 <input
-                  type="text"
-                  placeholder="e.g. B-1049"
-                  value={billNumber}
-                  onChange={(e) => setBillNumber(e.target.value)}
-                  className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-slate-800 font-mono"
+                  type="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-slate-800"
                 />
               </div>
+            </div>
+
+            {/* Bill / Token # */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Bill / Token #
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. B-1049"
+                value={billNumber}
+                onChange={(e) => setBillNumber(e.target.value)}
+                className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-slate-800 font-mono"
+              />
             </div>
 
             {/* Customer Name */}

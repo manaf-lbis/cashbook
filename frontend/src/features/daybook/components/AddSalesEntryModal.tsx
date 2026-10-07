@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Receipt, ChevronDown, ChevronUp, Calendar, Tag, CreditCard, Sparkles } from 'lucide-react';
-import { apiClient } from '../../../api/client';
+import { apiClient, getLocalDateString, getLocalTimeString } from '../../../api/client';
 import { useToast } from '../../../context/ToastContext';
 import { useAccounts } from '../../../context/AccountContext';
 import { IBiller } from '../../../types';
@@ -26,10 +26,11 @@ export const AddSalesEntryModal: React.FC<AddSalesEntryModalProps> = ({
   const { showToast } = useToast();
   const { refreshAccounts } = useAccounts();
 
-  // Core sales recording fields: Price, Description, Date (default current)
+  // Core sales recording fields: Price, Description, Date & Time (default current)
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => getLocalDateString());
+  const [time, setTime] = useState(() => getLocalTimeString());
 
   // Optional fields: Biller, Bill No, Customer Name
   const [billerId, setBillerId] = useState(defaultBillerId || (billers[0]?._id ?? ''));
@@ -58,11 +59,19 @@ export const AddSalesEntryModal: React.FC<AddSalesEntryModalProps> = ({
 
     try {
       setIsSubmitting(true);
+      let submitDate: string;
+      if (date) {
+        const localDateTime = new Date(`${date}T${time || '12:00'}:00`);
+        submitDate = !isNaN(localDateTime.getTime()) ? localDateTime.toISOString() : new Date().toISOString();
+      } else {
+        submitDate = new Date().toISOString();
+      }
+
       const res = await apiClient.post('/daybook/entries', {
         amount: numAmount,
         remarks: description.trim() || undefined,
         description: description.trim() || undefined,
-        date: date ? new Date(date).toISOString() : new Date().toISOString(),
+        date: submitDate,
         billerId: billerId || undefined,
         paymentMode: 'CASH',
         billNumber: billNumber.trim() || undefined,
@@ -74,7 +83,8 @@ export const AddSalesEntryModal: React.FC<AddSalesEntryModalProps> = ({
         refreshAccounts();
         setAmount('');
         setDescription('');
-        setDate(new Date().toISOString().split('T')[0]);
+        setDate(getLocalDateString());
+        setTime(getLocalTimeString());
         setBillNumber('');
         setCustomerName('');
         onSuccess();
@@ -150,22 +160,42 @@ export const AddSalesEntryModal: React.FC<AddSalesEntryModalProps> = ({
             </div>
           </div>
 
-          {/* 3. Date (Defaults to current date) */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-semibold uppercase text-slate-600 tracking-wider">
-                Date
-              </label>
-              <span className="text-[11px] text-emerald-600 font-medium">Default: Current Date</span>
+          {/* 3. Date & Time */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold uppercase text-slate-600 tracking-wider">
+                  Date
+                </label>
+                <span className="text-[10px] text-emerald-600 font-medium">Default: Today</span>
+              </div>
+              <div className="relative">
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  required
+                />
+              </div>
             </div>
-            <div className="relative">
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                required
-              />
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold uppercase text-slate-600 tracking-wider">
+                  Time
+                </label>
+                <span className="text-[10px] text-emerald-600 font-medium">Default: Now</span>
+              </div>
+              <div className="relative">
+                <input
+                  type="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  required
+                />
+              </div>
             </div>
           </div>
 

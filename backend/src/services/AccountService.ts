@@ -2,6 +2,7 @@ import { AccountRepository } from '../repositories/AccountRepository';
 import { TransactionRepository } from '../repositories/TransactionRepository';
 import { AccountType, TransactionType, TransactionSource } from '../constants/enums';
 import { ApiError } from '../utils/ApiError';
+import { parseEntryDate, formatDateIST } from '../utils/dateUtils';
 import dayjs from 'dayjs';
 
 export class AccountService {
@@ -115,8 +116,8 @@ export class AccountService {
       throw ApiError.badRequest(`Insufficient funds in ${fromAcc.name}. Current balance: ₹${fromAcc.balance}`);
     }
 
-    const txDate = dto.date || new Date();
-    const dateStr = dayjs(txDate).format('YYYY-MM-DD');
+    const txDate = parseEntryDate(dto.date);
+    const dateStr = formatDateIST(txDate);
 
     // Deduct from source
     const updatedFrom = await this.accountRepo.adjustBalance(dto.fromAccountId, -dto.amount);

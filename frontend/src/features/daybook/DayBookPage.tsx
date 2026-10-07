@@ -21,7 +21,7 @@ import {
   ArrowLeft,
   ChevronDown,
 } from 'lucide-react';
-import { apiClient, formatINR, formatDateTime } from '../../api/client';
+import { apiClient, formatINR, formatDateTime, formatEntryDateTime } from '../../api/client';
 import {
   IDayBookMonth,
   IBiller,
@@ -582,7 +582,7 @@ export const DayBookPage: React.FC = () => {
 
             {/* Entries Table Header (Desktop Only) */}
             <div className="hidden sm:flex px-6 py-2.5 bg-slate-100/70 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider items-center justify-between">
-              <span className="w-40">DATE & TIME</span>
+              <span className="w-48">DATE & TIME</span>
               <span className="w-28">BILL #</span>
               <span className="w-36">PAYMENT / A/C</span>
               <span className="flex-1">CUSTOMER / REMARKS</span>
@@ -658,7 +658,7 @@ export const DayBookPage: React.FC = () => {
                         {/* Bottom: Date/Time, Mode, Badges & Action Buttons */}
                         <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 text-slate-500">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-mono text-[11px] text-slate-500">{formatDateTime(entry.date)}</span>
+                            <span className="font-mono text-[11px] text-slate-500">{formatEntryDateTime(entry.date, entry.createdAt)}</span>
                             <span className="text-slate-300">•</span>
                             <span className="inline-flex items-center gap-1 text-[11px] text-slate-600 font-medium">
                               <Wallet className="w-3 h-3 text-emerald-600" /> Drawer
@@ -736,13 +736,13 @@ export const DayBookPage: React.FC = () => {
                       >
                         {/* Date */}
                         <div
-                          className={`w-40 text-xs font-mono ${
+                          className={`w-48 text-xs font-mono ${
                             isDeleted
                               ? 'text-slate-400 line-through decoration-rose-500 decoration-2'
                               : 'text-slate-600'
                           }`}
                         >
-                          {formatDateTime(entry.date)}
+                          {formatEntryDateTime(entry.date, entry.createdAt)}
                         </div>
 
                         {/* Bill # */}

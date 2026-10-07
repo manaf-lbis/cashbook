@@ -4,6 +4,7 @@ import { TransactionRepository } from '../repositories/TransactionRepository';
 import { PayableTransactionType, AccountType, TransactionType, TransactionSource } from '../constants/enums';
 import { ApiError } from '../utils/ApiError';
 import { ReconciliationLockService } from './ReconciliationLockService';
+import { parseEntryDate } from '../utils/dateUtils';
 import dayjs from 'dayjs';
 
 export class PayableService {
@@ -34,7 +35,7 @@ export class PayableService {
     }
     if (!account) throw ApiError.notFound('Cash drawer account not found');
 
-    const txDate = dto.date || new Date();
+    const txDate = parseEntryDate(dto.date);
     await ReconciliationLockService.assertCanCreateEntry(txDate);
     const dateStr = dayjs(txDate).format('YYYY-MM-DD');
 
@@ -114,7 +115,7 @@ export class PayableService {
       throw ApiError.badRequest(`Insufficient funds in ${account.name}. Available: ₹${account.balance}`);
     }
 
-    const txDate = dto.date || new Date();
+    const txDate = parseEntryDate(dto.date);
     await ReconciliationLockService.assertCanCreateEntry(txDate);
     const dateStr = dayjs(txDate).format('YYYY-MM-DD');
 
@@ -237,7 +238,7 @@ export class PayableService {
     payable.status = payable.balancePending <= 0 ? 'SETTLED' : 'ACTIVE';
     entry.amount = newAmount;
     if (dto.remarks !== undefined) entry.remarks = dto.remarks.trim();
-    if (dto.date) entry.date = new Date(dto.date);
+    if (dto.date) entry.date = parseEntryDate(dto.date);
 
     await payable.save();
     return await this.payableRepo.findById(payableId, 'entries.accountId');

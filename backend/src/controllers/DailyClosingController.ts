@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { DailyClosingService } from '../services/DailyClosingService';
 import { ApiResponse } from '../utils/ApiResponse';
-import dayjs from 'dayjs';
+import { getTodayIST } from '../utils/dateUtils';
 
 export class DailyClosingController {
   private closingService: DailyClosingService;
@@ -12,7 +12,7 @@ export class DailyClosingController {
 
   getLiveSummary = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const dateStr = (req.query.date as string) || dayjs().format('YYYY-MM-DD');
+      const dateStr = (req.query.date as string) || getTodayIST();
       const summary = await this.closingService.getLiveDaySummary(dateStr);
       return ApiResponse.success(res, summary, 'Live day summary computed successfully');
     } catch (err) {

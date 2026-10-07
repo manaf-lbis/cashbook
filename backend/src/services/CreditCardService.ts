@@ -4,6 +4,7 @@ import { TransactionRepository } from '../repositories/TransactionRepository';
 import { CreditCardTransactionType, AccountType, TransactionType, TransactionSource } from '../constants/enums';
 import { ApiError } from '../utils/ApiError';
 import { ReconciliationLockService } from './ReconciliationLockService';
+import { parseEntryDate, formatDateIST } from '../utils/dateUtils';
 import dayjs from 'dayjs';
 
 export class CreditCardService {
@@ -79,8 +80,8 @@ export class CreditCardService {
 
     const txType = dto.type || CreditCardTransactionType.PURCHASE;
     const remarksText = dto.remarks || dto.description || '';
-    const txDate = dto.date || new Date();
-    const dateStr = dayjs(txDate).format('YYYY-MM-DD');
+    const txDate = parseEntryDate(dto.date);
+    const dateStr = formatDateIST(txDate);
 
     let newOutstanding = card.totalOutstanding;
 
@@ -213,7 +214,7 @@ export class CreditCardService {
     if (dto.remarks !== undefined || dto.description !== undefined) {
       tx.remarks = (dto.remarks || dto.description || '').trim();
     }
-    if (dto.date) tx.date = new Date(dto.date);
+    if (dto.date) tx.date = parseEntryDate(dto.date);
 
     await tx.save();
     return { card, transaction: tx };

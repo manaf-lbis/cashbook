@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { getStartOfDayIST, getEndOfDayIST, getTodayIST, TIMEZONE } from '../utils/dateUtils';
 import { DailyClosingRepository } from '../repositories/DailyClosingRepository';
 import { DailyClosingModel, IDailyClosing, IManualCashSplitUp } from '../models/DailyClosing';
 import { DayBookEntryModel } from '../models/DayBookEntry';
@@ -43,8 +44,8 @@ export class DailyClosingService {
       throw ApiError.badRequest('Invalid date format. Expected YYYY-MM-DD');
     }
 
-    const startOfDay = dayjs(dateStr).startOf('day').toDate();
-    const endOfDay = dayjs(dateStr).endOf('day').toDate();
+    const startOfDay = getStartOfDayIST(dateStr);
+    const endOfDay = getEndOfDayIST(dateStr);
 
     // 1. Check if record already saved for this date
     const existingClosing = await this.closingRepo.findByDate(dateStr);
@@ -357,7 +358,7 @@ export class DailyClosingService {
    * Rolls forward chronologically from oldest to newest, then presents newest first.
    */
   async getTimelineHistory(daysCount = 14) {
-    const todayStr = dayjs().format('YYYY-MM-DD');
+    const todayStr = getTodayIST();
 
     // 1. Current liabilities (Credit cards & supplier payables)
     const cards = await CreditCardModel.find({ isActive: true });
@@ -383,7 +384,7 @@ export class DailyClosingService {
     // 4. Generate dates in chronological order (oldest to newest)
     const dates: string[] = [];
     for (let i = daysCount - 1; i >= 0; i--) {
-      dates.push(dayjs().subtract(i, 'day').format('YYYY-MM-DD'));
+      dates.push(dayjs().tz(TIMEZONE).subtract(i, 'day').format('YYYY-MM-DD'));
     }
 
     // 5. Baseline opening balance before dates[0]
@@ -447,8 +448,8 @@ export class DailyClosingService {
         runningOpening = saved.actualClosingBalance;
       } else {
         // Not saved yet: check ledger activity on that day
-        const startOfDay = dayjs(dateStr).startOf('day').toDate();
-        const endOfDay = dayjs(dateStr).endOf('day').toDate();
+        const startOfDay = getStartOfDayIST(dateStr);
+        const endOfDay = getEndOfDayIST(dateStr);
 
         const [dayBookEntries, credits, expenses, cardTxs] = await Promise.all([
           DayBookEntryModel.find({ date: { $gte: startOfDay, $lte: endOfDay }, isDeleted: { $ne: true } }),

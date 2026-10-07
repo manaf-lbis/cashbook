@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import dayjs from 'dayjs';
+import { getCurrentMonthIST } from '../utils/dateUtils';
 import { DayBookService } from '../services/DayBookService';
 import { ApiResponse } from '../utils/ApiResponse';
 
@@ -22,7 +22,7 @@ export class DayBookController {
 
   getBillers = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const monthKey = (req.query.month as string) || dayjs().format('YYYY-MM');
+      const monthKey = (req.query.month as string) || getCurrentMonthIST();
       const data = await this.daybookService.getBillersWithMonthStats(monthKey);
       return ApiResponse.success(res, data, 'Billers with month statistics retrieved');
     } catch (err) {
@@ -33,7 +33,7 @@ export class DayBookController {
   getEntries = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { billerId } = req.params;
-      const monthKey = (req.query.month as string) || dayjs().format('YYYY-MM');
+      const monthKey = (req.query.month as string) || getCurrentMonthIST();
       const data = await this.daybookService.getBillerEntries(billerId, monthKey);
       return ApiResponse.success(res, data, 'Biller sales entries retrieved');
     } catch (err) {

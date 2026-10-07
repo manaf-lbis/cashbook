@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
-import { apiClient } from '../../../api/client';
+import { apiClient, getLocalDateString, getLocalTimeString } from '../../../api/client';
 import { useToast } from '../../../context/ToastContext';
 import { useAccounts } from '../../../context/AccountContext';
 
@@ -23,6 +23,8 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
   const { refreshAccounts } = useAccounts();
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
+  const [date, setDate] = useState(() => getLocalDateString());
+  const [time, setTime] = useState(() => getLocalTimeString());
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -41,10 +43,17 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
     try {
       setLoading(true);
+      let submitDate: string | undefined = undefined;
+      if (date) {
+        const localDateTime = new Date(`${date}T${time || '12:00'}:00`);
+        submitDate = !isNaN(localDateTime.getTime()) ? localDateTime.toISOString() : undefined;
+      }
+
       await apiClient.post('/expenses', {
         title: title.trim(),
         amount: numAmount,
         category: categoryName || 'Shop Expenses',
+        date: submitDate,
       });
 
       showToast(`Expense "${title.trim()}" (₹${numAmount}) recorded!`, 'success');
@@ -54,6 +63,8 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
       setTitle('');
       setAmount('');
+      setDate(getLocalDateString());
+      setTime(getLocalTimeString());
     } catch (err: any) {
       showToast(err.message || 'Failed to record expense', 'error');
     } finally {
@@ -89,6 +100,21 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
           min="0.01"
           step="any"
         />
+
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+          <Input
+            label="Time"
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+          />
+        </div>
 
         <div className="flex gap-2 pt-2">
           <Button type="button" variant="outline" className="flex-1" onClick={onClose}>

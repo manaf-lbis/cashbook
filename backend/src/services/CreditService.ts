@@ -4,6 +4,7 @@ import { TransactionRepository } from '../repositories/TransactionRepository';
 import { CreditTransactionType, AccountType, TransactionType, TransactionSource } from '../constants/enums';
 import { ApiError } from '../utils/ApiError';
 import { ReconciliationLockService } from './ReconciliationLockService';
+import { parseEntryDate } from '../utils/dateUtils';
 import dayjs from 'dayjs';
 
 export class CreditService {
@@ -34,7 +35,7 @@ export class CreditService {
     }
     if (!account) throw ApiError.notFound('Cash drawer account not found');
 
-    const txDate = dto.date || new Date();
+    const txDate = parseEntryDate(dto.date);
     await ReconciliationLockService.assertCanCreateEntry(txDate);
     const dateStr = dayjs(txDate).format('YYYY-MM-DD');
 
@@ -110,7 +111,7 @@ export class CreditService {
     }
     if (!account) throw ApiError.notFound('Cash drawer account not found');
 
-    const txDate = dto.date || new Date();
+    const txDate = parseEntryDate(dto.date);
     await ReconciliationLockService.assertCanCreateEntry(txDate);
     const dateStr = dayjs(txDate).format('YYYY-MM-DD');
 
@@ -233,7 +234,7 @@ export class CreditService {
     credit.status = credit.balanceDue <= 0 ? 'SETTLED' : 'ACTIVE';
     entry.amount = newAmount;
     if (dto.remarks !== undefined) entry.remarks = dto.remarks.trim();
-    if (dto.date) entry.date = new Date(dto.date);
+    if (dto.date) entry.date = parseEntryDate(dto.date);
 
     await credit.save();
     return await this.creditRepo.findById(creditId, 'entries.accountId');

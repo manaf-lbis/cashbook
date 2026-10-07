@@ -20,7 +20,7 @@ import {
   Edit2,
   Check,
 } from 'lucide-react';
-import { apiClient, formatINR, formatDate } from '../../api/client';
+import { apiClient, formatINR, formatDate, getLocalDateString, addDaysToDateString } from '../../api/client';
 import {
   IDailyClosingSummary,
   IManualCashSplitUp,
@@ -39,7 +39,7 @@ export const DailyClosingPage: React.FC = () => {
 
   // Current selected date (YYYY-MM-DD)
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0];
+    return getLocalDateString();
   });
 
   const [loading, setLoading] = useState(true);
@@ -85,13 +85,11 @@ export const DailyClosingPage: React.FC = () => {
 
   // Date Navigation
   const changeDateBy = (days: number) => {
-    const current = new Date(selectedDate);
-    current.setDate(current.getDate() + days);
-    setSelectedDate(current.toISOString().split('T')[0]);
+    setSelectedDate((prev) => addDaysToDateString(prev, days));
   };
 
   const setDateToToday = () => {
-    setSelectedDate(new Date().toISOString().split('T')[0]);
+    setSelectedDate(getLocalDateString());
   };
 
   // Numbers from books

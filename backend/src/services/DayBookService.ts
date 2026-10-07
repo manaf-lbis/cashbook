@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { getCurrentMonthIST, TIMEZONE, parseEntryDate } from '../utils/dateUtils';
 import { BillerRepository } from '../repositories/BillerRepository';
 import { DayBookRepository } from '../repositories/DayBookRepository';
 import { AccountRepository } from '../repositories/AccountRepository';
@@ -21,20 +22,20 @@ export class DayBookService {
   }
 
   getMonthStatus(monthKey: string): 'LOCKED' | 'ACTIVE' | 'VIEW_ONLY' {
-    const currentMonth = dayjs().format('YYYY-MM');
+    const currentMonth = getCurrentMonthIST();
     if (monthKey > currentMonth) return 'LOCKED';
     if (monthKey === currentMonth) return 'ACTIVE';
     return 'VIEW_ONLY';
   }
 
   async getMonthsList(year?: number) {
-    const targetYear = year || dayjs().year();
-    const currentMonth = dayjs().format('YYYY-MM');
+    const targetYear = year || dayjs().tz(TIMEZONE).year();
+    const currentMonth = getCurrentMonthIST();
     const months = [];
 
     for (let m = 1; m <= 12; m++) {
       const monthKey = `${targetYear}-${String(m).padStart(2, '0')}`;
-      const dateObj = dayjs(`${monthKey}-01`);
+      const dateObj = dayjs.tz(`${monthKey}-01`, TIMEZONE);
       const status = this.getMonthStatus(monthKey);
       const aggregates = status !== 'LOCKED' ? await this.daybookRepo.getMonthAggregates(monthKey) : { totalSales: 0, totalBills: 0 };
 
@@ -120,10 +121,10 @@ export class DayBookService {
   }) {
     if (dto.amount <= 0) throw ApiError.badRequest('Sale amount must be greater than zero');
 
-    const entryDate = dto.date ? new Date(dto.date) : new Date();
+    const entryDate = parseEntryDate(dto.date);
     await ReconciliationLockService.assertCanCreateEntry(entryDate);
 
-    const monthKey = dayjs(entryDate).format('YYYY-MM');
+    const monthKey = dayjs(entryDate).tz(TIMEZONE).format('YYYY-MM');
     const status = this.getMonthStatus(monthKey);
 
     if (status === 'LOCKED') {
@@ -292,7 +293,7 @@ export class DayBookService {
     if (dto.billNumber !== undefined) entry.billNumber = dto.billNumber;
     if (dto.customerName !== undefined) entry.customerName = dto.customerName;
     entry.remarks = finalRemarks;
-    if (dto.date) entry.date = new Date(dto.date);
+    if (dto.date) entry.date = parseEntryDate(dto.date);
 
     entry.isEdited = true;
     if (!entry.editLogs) entry.editLogs = [];

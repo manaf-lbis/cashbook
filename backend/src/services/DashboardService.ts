@@ -4,6 +4,7 @@ import { PayableRepository } from '../repositories/PayableRepository';
 import { CreditCardRepository } from '../repositories/CreditCardRepository';
 import { ExpenseRepository } from '../repositories/ExpenseRepository';
 import { TransactionRepository } from '../repositories/TransactionRepository';
+import { getTodayIST, TIMEZONE } from '../utils/dateUtils';
 import dayjs from 'dayjs';
 
 export class DashboardService {
@@ -24,9 +25,9 @@ export class DashboardService {
   }
 
   async getDashboardSummary() {
-    const todayStr = dayjs().format('YYYY-MM-DD');
-    const startOfMonth = dayjs().startOf('month').toDate();
-    const endOfMonth = dayjs().endOf('month').toDate();
+    const todayStr = getTodayIST();
+    const startOfMonth = dayjs().tz(TIMEZONE).startOf('month').toDate();
+    const endOfMonth = dayjs().tz(TIMEZONE).endOf('month').toDate();
 
     const [
       liquidity,
