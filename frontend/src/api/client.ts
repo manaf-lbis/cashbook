@@ -8,16 +8,33 @@ export const apiClient = axios.create({
   },
 });
 
+// Attach JWT token to all requests
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('cashbook_auth_token');
+  if (token && config.headers) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 apiClient.interceptors.response.use(
   (response) => {
     return response;
   },
   (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('cashbook_auth_token');
+      localStorage.removeItem('cashbook_user');
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    }
     const message =
       error.response?.data?.message || error.message || 'An unexpected error occurred';
     return Promise.reject(new Error(message));
   }
 );
+
 
 export const formatINR = (val: number | undefined | null): string => {
   if (val === undefined || val === null || isNaN(val)) return '₹0';

@@ -17,6 +17,5 @@ const ExpenseCategorySchema = new Schema<IExpenseCategory>(
   { timestamps: true }
 );
 
-ExpenseCategorySchema.index({ name: 1 });
-
 export const ExpenseCategoryModel = mongoose.model<IExpenseCategory>('ExpenseCategory', ExpenseCategorySchema);
+

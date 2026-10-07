@@ -1,9 +1,13 @@
 import React, { Suspense, lazy } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppLayout } from '../layouts/AppLayout';
+import { ProtectedRoute } from '../components/shared/ProtectedRoute';
+import { useAuth } from '../context/AuthContext';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 
-// Senior dev code-splitting: Lazy load each feature module
+const LoginPage = lazy(() =>
+  import('../features/auth/LoginPage').then((m) => ({ default: m.LoginPage }))
+);
 const DashboardPage = lazy(() =>
   import('../features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage }))
 );
@@ -32,10 +36,39 @@ const SuspenseWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) 
   </Suspense>
 );
 
+const PublicOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-slate-900">
+        <LoadingSpinner message="Checking security status..." />
+      </div>
+    );
+  }
+  if (isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+};
+
 export const router = createBrowserRouter([
   {
+    path: '/login',
+    element: (
+      <PublicOnlyRoute>
+        <SuspenseWrapper>
+          <LoginPage />
+        </SuspenseWrapper>
+      </PublicOnlyRoute>
+    ),
+  },
+  {
     path: '/',
-    element: <AppLayout />,
+    element: (
+      <ProtectedRoute>
+        <AppLayout />
+      </ProtectedRoute>
+    ),
     children: [
       {
         index: true,
@@ -45,6 +78,7 @@ export const router = createBrowserRouter([
           </SuspenseWrapper>
         ),
       },
+
       {
         path: 'daybook',
         element: (

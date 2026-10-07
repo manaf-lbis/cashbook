@@ -160,4 +160,28 @@ export const SaveDailyClosingSchema = z.object({
   notes: z.string().trim().optional(),
 });
 
+export const LoginSchema = z.object({
+  username: z.string().min(1, 'Username / Phone is required').trim(),
+  password: z.string().min(1, 'Password is required'),
+});
+
+export const CreateCategorySchema = z.object({
+  name: z.string().min(1, 'Category name is required').trim(),
+  description: z.string().trim().optional(),
+  color: z.string().trim().optional(),
+});
+
+export const UpdateCardSchema = z.object({
+  cardName: z.string().min(1).trim().optional(),
+  bankName: z.string().min(1).trim().optional(),
+  last4Digits: z.string().length(4).optional(),
+  creditLimit: z.number().positive().optional(),
+  billingCycleDate: z.number().min(1).max(31).optional(),
+  dueDate: z.number().min(1).max(31).optional(),
+  colorTheme: z.string().optional(),
+  isActive: z.boolean().optional(),
+});
+
+
+
 

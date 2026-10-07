@@ -1,15 +1,17 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Users,
   Receipt,
   CreditCard,
-  ChevronDown,
   CalendarDays,
   LayoutDashboard,
   Scale,
+  LogOut,
 } from 'lucide-react';
 import { useAccounts } from '../../context/AccountContext';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -18,6 +20,15 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { liquidity } = useAccounts();
+  const { user, logout } = useAuth();
+  const { showToast } = useToast();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    showToast('Logged out securely', 'info');
+    navigate('/login', { replace: true });
+  };
 
   const navItems = [
     { label: 'Dashboard', path: '/', icon: LayoutDashboard },
@@ -50,23 +61,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           </h1>
         </div>
 
-        {/* Profile Card */}
+        {/* Profile Card with Logout */}
         <div className="p-3">
-          <div className="bg-slate-50 hover:bg-slate-100 p-3 rounded-xl border border-slate-200/80 flex items-center justify-between cursor-pointer transition-colors">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm shadow-xs">
-                S
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 flex items-center justify-between transition-colors">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 shrink-0 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-sm shadow-xs">
+                {user?.name?.charAt(0) || 'A'}
               </div>
-              <div>
-                <p className="text-sm font-bold text-slate-800 leading-tight">My Shop</p>
-                <p className="text-xs text-slate-500 font-mono">9876543210</p>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-slate-800 leading-tight truncate">
+                  {user?.name || 'Shop Admin'}
+                </p>
+                <p className="text-xs text-slate-500 font-mono truncate">
+                  {user?.username || '7994414155'}
+                </p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span className="text-xs text-emerald-600 font-semibold">Online</span>
+                  <span className="text-[11px] text-emerald-600 font-semibold">Active Session</span>
                 </div>
               </div>
             </div>
-            <ChevronDown className="w-4 h-4 text-slate-400" />
+            <button
+              onClick={handleLogout}
+              title="Sign Out"
+              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors shrink-0 ml-1"
+              aria-label="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
@@ -74,6 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         <div className="px-5 pt-3 pb-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
           LEDGER MANAGEMENT
         </div>
+
 
         {/* Navigation items */}
         <nav className="flex-1 px-3 space-y-1 overflow-y-auto">

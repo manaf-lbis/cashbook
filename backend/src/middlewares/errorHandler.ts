@@ -27,13 +27,26 @@ export const errorHandler = (
     statusCode = 400;
     message = 'Duplicate field value entered';
     errors = [err.keyValue];
+  } else if (err.name === 'CastError') {
+    statusCode = 400;
+    message = `Invalid format for field '${err.path}'`;
+    errors = [{ field: err.path, message: 'Invalid identifier format' }];
+  } else if (err instanceof SyntaxError && 'body' in err) {
+    statusCode = 400;
+    message = 'Malformed JSON payload in request body';
   } else if (err instanceof Error) {
     message = err.message;
   }
 
-  if (process.env.NODE_ENV !== 'production' && statusCode === 500) {
+  // Sanitize 500 errors in production to prevent information disclosure
+  if (statusCode === 500 && process.env.NODE_ENV === 'production') {
+    console.error('[Unhandled Internal Error]', err);
+    message = 'An internal server error occurred. Please contact the administrator.';
+    errors = [];
+  } else if (statusCode === 500) {
     console.error('[Unhandled Error]', err);
   }
 
   ApiResponse.error(res, message, statusCode, errors);
+
 };

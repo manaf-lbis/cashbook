@@ -9,13 +9,16 @@ import { CreditCardTransactionModel } from './models/CreditCardTransaction';
 import { TransactionModel } from './models/Transaction';
 import { BillerModel } from './models/Biller';
 import { DayBookEntryModel } from './models/DayBookEntry';
+import { UserModel } from './models/User';
 import { AccountType, CreditTransactionType, PayableTransactionType, CreditCardTransactionType, TransactionType, TransactionSource } from './constants/enums';
+import { ENV } from './config/env';
 import dayjs from 'dayjs';
 
 const seedDatabase = async () => {
   await connectDB();
 
   console.log('Clearing existing data for fresh initialization...');
+  await UserModel.deleteMany({});
   await AccountModel.deleteMany({});
   await ExpenseModel.deleteMany({});
   await CreditModel.deleteMany({});
@@ -24,7 +27,17 @@ const seedDatabase = async () => {
   await CreditCardTransactionModel.deleteMany({});
   await TransactionModel.deleteMany({});
 
+  console.log('Seeding Default Admin User...');
+  await UserModel.create({
+    username: ENV.ADMIN_USERNAME,
+    password: ENV.ADMIN_PASSWORD,
+    name: 'Store Administrator',
+    role: 'ADMIN',
+    isActive: true,
+  });
+
   console.log('Seeding Accounts (Cash in Hand & Bank Balances)...');
+
   const cashAccount = await AccountModel.create({
     name: 'Cash in Hand (Counter)',
     type: AccountType.CASH,

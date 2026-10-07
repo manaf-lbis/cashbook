@@ -23,7 +23,12 @@ export class ApiError extends Error {
     return new ApiError(401, msg);
   }
 
+  static forbidden(msg: string = 'Forbidden: Access denied') {
+    return new ApiError(403, msg);
+  }
+
   static internal(msg: string = 'Internal Server Error') {
     return new ApiError(500, msg, [], false);
   }
+
 }

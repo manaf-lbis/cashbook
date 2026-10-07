@@ -448,4 +448,17 @@ export interface ITimelineResponse {
   timeline: ITimelineDay[];
 }
 
+export interface IUser {
+  id: string;
+  username: string;
+  name: string;
+  role: string;
+}
+
+export interface ILoginResponse {
+  token: string;
+  user: IUser;
+}
+
+
 

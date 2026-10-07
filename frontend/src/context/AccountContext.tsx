@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../api/client';
 import { IAccount, ApiResponse } from '../types';
+import { useAuth } from './AuthContext';
 
 interface LiquiditySummary {
   cashInHand: number;
@@ -28,11 +29,18 @@ const defaultLiquidity: LiquiditySummary = {
 const AccountContext = createContext<AccountContextType | undefined>(undefined);
 
 export const AccountProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useAuth();
   const [liquidity, setLiquidity] = useState<LiquiditySummary>(defaultLiquidity);
   const [accounts, setAccounts] = useState<IAccount[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const fetchLiquidityAndAccounts = useCallback(async () => {
+    if (!isAuthenticated) {
+      setLiquidity(defaultLiquidity);
+      setAccounts([]);
+      return;
+    }
+
     setIsLoading(true);
     try {
       const [liqRes, accRes] = await Promise.all([
@@ -51,11 +59,14 @@ export const AccountProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    fetchLiquidityAndAccounts();
-  }, [fetchLiquidityAndAccounts]);
+    if (isAuthenticated) {
+      fetchLiquidityAndAccounts();
+    }
+  }, [isAuthenticated, fetchLiquidityAndAccounts]);
+
 
   return (
     <AccountContext.Provider

@@ -1,11 +1,16 @@
 import { createApp } from './app';
 import { connectDB } from './config/db';
 import { ENV } from './config/env';
+import { AuthService } from './services/AuthService';
 
 const startServer = async () => {
   await connectDB();
 
+  // Ensure default administrator account is provisioned
+  await AuthService.ensureDefaultAdmin();
+
   const app = createApp();
+
 
   app.listen(ENV.PORT, () => {
     console.log(`===============================================`);
