@@ -12,6 +12,8 @@ import {
 import { useAccounts } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { InstallAppButton } from './InstallAppPrompt';
+
 
 interface SidebarProps {
   isOpen: boolean;
@@ -131,8 +133,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           })}
         </nav>
 
+        {/* PWA Install Button (Windows & Mobile) */}
+        <div className="px-3 py-2 border-t border-slate-100">
+          <InstallAppButton isSidebar={true} />
+        </div>
+
         {/* Bottom Quick Info */}
+
         <div className="p-4 border-t border-slate-100 bg-slate-50/70">
+
           <div className="flex items-center justify-between text-xs text-slate-500">
             <span>In Hand Cash:</span>
             <span className="font-mono font-bold text-emerald-600 text-sm">

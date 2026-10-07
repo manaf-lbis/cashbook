@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="100" fill="#0f172a"/>
+  <rect x="8" y="8" width="496" height="496" rx="92" stroke="#2563eb" stroke-width="8" stroke-opacity="0.6"/>
+  <circle cx="256" cy="225" r="130" fill="#2563eb"/>
+  <!-- Book / Ledger Icon -->
+  <path d="M190 170C190 161.163 197.163 154 206 154H306C314.837 154 322 161.163 322 170V282C322 290.837 314.837 298 306 298H206C197.163 298 190 290.837 190 282V170Z" fill="white"/>
+  <path d="M216 190H296" stroke="#2563eb" stroke-width="8" stroke-linecap="round"/>
+  <path d="M216 216H296" stroke="#2563eb" stroke-width="8" stroke-linecap="round"/>
+  <path d="M216 242H270" stroke="#2563eb" stroke-width="8" stroke-linecap="round"/>
+  <rect x="180" y="380" width="152" height="52" rx="14" fill="#2563eb"/>
+  <text x="256" y="416" fill="white" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="900" text-anchor="middle" letter-spacing="3">PRO</text>
+</svg>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from '../components/shared/Sidebar';
+import { InstallBanner } from '../components/shared/InstallAppPrompt';
 import { Menu } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
@@ -16,7 +17,11 @@ export const AppLayout: React.FC = () => {
 
       {/* Main Full-Width Content Container */}
       <div className="flex-1 flex flex-col min-w-0 lg:pl-64 h-full overflow-hidden bg-white">
+        {/* PWA In-App Install Banner (Mobile & Windows) */}
+        <InstallBanner />
+
         {/* Mobile Header Bar */}
+
         <div className="lg:hidden h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4 shrink-0">
           <button
             onClick={() => setIsSidebarOpen(true)}

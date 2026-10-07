@@ -23,8 +23,11 @@ export const createApp = (): Application => {
           imgSrc: ["'self'", 'data:', 'blob:'],
           objectSrc: ["'none'"],
           frameAncestors: ["'none'"],
+          workerSrc: ["'self'"],
+          manifestSrc: ["'self'"],
         },
       },
+
       frameguard: { action: 'deny' },
       crossOriginResourcePolicy: { policy: 'cross-origin' },
       crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
