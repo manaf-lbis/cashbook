@@ -10,10 +10,10 @@ import {
   ShieldCheck,
   ArrowRight,
   BookOpen,
-  Sparkles,
   AlertCircle,
   CheckCircle2,
 } from 'lucide-react';
+
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -21,7 +21,7 @@ export const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const { showToast } = useToast();
 
-  const [username, setUsername] = useState('7994414155');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,7 +36,6 @@ export const LoginPage: React.FC = () => {
     !rawFrom.includes(':') &&
     !rawFrom.includes('\\');
   const from = isSafeRelativePath ? rawFrom : '/';
-
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,12 +64,6 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleUseCredentials = () => {
-    setUsername('7994414155');
-    setPassword('Login@8520');
-    setErrorMessage(null);
-    showToast('Credentials filled! Click Sign In to continue.', 'info');
-  };
 
   return (
     <div className="min-h-screen w-screen bg-slate-900 flex flex-col justify-center items-center p-4 sm:p-6 relative overflow-hidden font-sans">
@@ -178,35 +171,8 @@ export const LoginPage: React.FC = () => {
               )}
             </button>
           </form>
-
-          {/* Quick Helper Box for Configured Account */}
-          <div className="mt-6 pt-5 border-t border-slate-100">
-            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-600" /> Authorized Login
-                </span>
-                <button
-                  type="button"
-                  onClick={handleUseCredentials}
-                  className="text-xs font-bold text-blue-600 hover:text-blue-800 underline underline-offset-2"
-                >
-                  Auto-fill
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-white p-2 rounded-xl border border-slate-100">
-                <div>
-                  <span className="text-slate-400 text-[10px] block font-sans">Username:</span>
-                  <span className="font-bold text-slate-800">7994414155</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 text-[10px] block font-sans">Password:</span>
-                  <span className="font-bold text-slate-800">Login@8520</span>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
+
 
         {/* Footer Security Badges */}
         <div className="bg-slate-50 px-7 py-3.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">

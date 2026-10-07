@@ -75,8 +75,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                   {user?.name || 'Shop Admin'}
                 </p>
                 <p className="text-xs text-slate-500 font-mono truncate">
-                  {user?.username || '7994414155'}
+                  {user?.username || 'Authorized User'}
                 </p>
+
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                   <span className="text-[11px] text-emerald-600 font-semibold">Active Session</span>
