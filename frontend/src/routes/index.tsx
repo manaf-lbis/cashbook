@@ -1,70 +1,19 @@
-import React, { Suspense, lazy } from 'react';
+import React from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppLayout } from '../layouts/AppLayout';
 import { ProtectedRoute } from '../components/shared/ProtectedRoute';
 import { useAuth } from '../context/AuthContext';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 
-function lazyRetry<T extends React.ComponentType<any>>(
-  componentImport: () => Promise<{ default: T }>
-) {
-  return lazy(async () => {
-    const isRefreshed =
-      typeof window !== 'undefined' &&
-      window.sessionStorage.getItem('chunk_load_failed_refreshed') === 'true';
-
-    try {
-      const component = await componentImport();
-      if (typeof window !== 'undefined') {
-        window.sessionStorage.setItem('chunk_load_failed_refreshed', 'false');
-      }
-      return component;
-    } catch (error) {
-      if (!isRefreshed && typeof window !== 'undefined') {
-        console.warn(
-          '[Vite] Stale deploy chunk detected on dynamic import. Auto-refreshing to fetch latest assets...',
-          error
-        );
-        window.sessionStorage.setItem('chunk_load_failed_refreshed', 'true');
-        window.location.reload();
-        return { default: (() => null) as unknown as T };
-      }
-      throw error;
-    }
-  });
-}
-
-const LoginPage = lazyRetry(() =>
-  import('../features/auth/LoginPage').then((m) => ({ default: m.LoginPage }))
-);
-const DashboardPage = lazyRetry(() =>
-  import('../features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage }))
-);
-const ExpensesPage = lazyRetry(() =>
-  import('../features/expenses/ExpensesPage').then((m) => ({ default: m.ExpensesPage }))
-);
-const CreditsPage = lazyRetry(() =>
-  import('../features/credits/CreditsPage').then((m) => ({ default: m.CreditsPage }))
-);
-const PayablesPage = lazyRetry(() =>
-  import('../features/payables/PayablesPage').then((m) => ({ default: m.PayablesPage }))
-);
-const CreditCardsPage = lazyRetry(() =>
-  import('../features/credit-cards/CreditCardsPage').then((m) => ({ default: m.CreditCardsPage }))
-);
-const DayBookPage = lazyRetry(() =>
-  import('../features/daybook/DayBookPage').then((m) => ({ default: m.DayBookPage }))
-);
-const DailyClosingPage = lazyRetry(() =>
-  import('../features/daily-closing/DailyClosingPage').then((m) => ({ default: m.DailyClosingPage }))
-);
-
-
-const SuspenseWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <Suspense fallback={<LoadingSpinner message="Loading feature module..." />}>
-    {children}
-  </Suspense>
-);
+// Direct synchronous imports to completely eliminate dynamic chunk loading failures on page navigation
+import { LoginPage } from '../features/auth/LoginPage';
+import { DashboardPage } from '../features/dashboard/DashboardPage';
+import { ExpensesPage } from '../features/expenses/ExpensesPage';
+import { CreditsPage } from '../features/credits/CreditsPage';
+import { PayablesPage } from '../features/payables/PayablesPage';
+import { CreditCardsPage } from '../features/credit-cards/CreditCardsPage';
+import { DayBookPage } from '../features/daybook/DayBookPage';
+import { DailyClosingPage } from '../features/daily-closing/DailyClosingPage';
 
 const PublicOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -86,9 +35,7 @@ export const router = createBrowserRouter([
     path: '/login',
     element: (
       <PublicOnlyRoute>
-        <SuspenseWrapper>
-          <LoginPage />
-        </SuspenseWrapper>
+        <LoginPage />
       </PublicOnlyRoute>
     ),
   },
@@ -102,60 +49,31 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: (
-          <SuspenseWrapper>
-            <DashboardPage />
-          </SuspenseWrapper>
-        ),
+        element: <DashboardPage />,
       },
-
       {
         path: 'daybook',
-        element: (
-          <SuspenseWrapper>
-            <DayBookPage />
-          </SuspenseWrapper>
-        ),
+        element: <DayBookPage />,
       },
       {
         path: 'daily-closing',
-        element: (
-          <SuspenseWrapper>
-            <DailyClosingPage />
-          </SuspenseWrapper>
-        ),
+        element: <DailyClosingPage />,
       },
       {
         path: 'expenses',
-        element: (
-          <SuspenseWrapper>
-            <ExpensesPage />
-          </SuspenseWrapper>
-        ),
+        element: <ExpensesPage />,
       },
       {
         path: 'credits',
-        element: (
-          <SuspenseWrapper>
-            <CreditsPage />
-          </SuspenseWrapper>
-        ),
+        element: <CreditsPage />,
       },
       {
         path: 'payables',
-        element: (
-          <SuspenseWrapper>
-            <PayablesPage />
-          </SuspenseWrapper>
-        ),
+        element: <PayablesPage />,
       },
       {
         path: 'credit-cards',
-        element: (
-          <SuspenseWrapper>
-            <CreditCardsPage />
-          </SuspenseWrapper>
-        ),
+        element: <CreditCardsPage />,
       },
       {
         path: '*',

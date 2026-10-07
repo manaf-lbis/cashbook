@@ -9,7 +9,19 @@ if (typeof window !== 'undefined') {
     console.warn('[Vite] Preload error detected for dynamic chunk. Auto-refreshing...', event);
     window.location.reload();
   });
+
+  // Purge legacy caches from previous service worker versions if present
+  if ('caches' in window) {
+    window.caches.keys().then((names) => {
+      for (const name of names) {
+        if (name !== 'cashbook-pwa-v3') {
+          window.caches.delete(name);
+        }
+      }
+    });
+  }
 }
+
 
 // Register Progressive Web App Service Worker (Mobile & Windows installation)
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
