@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import { ICreditCard, ICreditCardTransaction, CreditCardTransactionType, ApiResponse } from '../../../types';
-import { apiClient, formatINR, formatDateTime, formatEntryDateTime } from '../../../api/client';
+import { apiClient, formatINR, formatDateTime, formatEntryDateTime, getEntryDateKey } from '../../../api/client';
 import { Badge } from '../../../components/ui/Badge';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
+import { DaySeparator } from '../../../components/ui/DaySeparator';
 
 interface CardLedgerModalProps {
   isOpen: boolean;
@@ -67,11 +68,27 @@ export const CardLedgerModal: React.FC<CardLedgerModalProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  transactions.map((tx) => (
-                    <tr key={tx._id} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 font-mono text-slate-500">
-                        {formatEntryDateTime(tx.date, (tx as any).createdAt, tx._id)}
-                      </td>
+                  transactions.map((tx, idx) => {
+                    const dateKey = getEntryDateKey(tx.date, (tx as any).createdAt, tx._id);
+                    const prevDateKey =
+                      idx > 0
+                        ? getEntryDateKey(transactions[idx - 1].date, (transactions[idx - 1] as any).createdAt, transactions[idx - 1]._id)
+                        : null;
+                    const showSeparator = idx === 0 || dateKey !== prevDateKey;
+
+                    return (
+                      <React.Fragment key={tx._id}>
+                        {showSeparator && (
+                          <tr>
+                            <td colSpan={5} className="p-0 border-none bg-slate-50/40">
+                              <DaySeparator date={dateKey} type="card" className="py-1" />
+                            </td>
+                          </tr>
+                        )}
+                        <tr className="hover:bg-slate-50">
+                          <td className="py-2.5 px-3 font-mono text-slate-500">
+                            {formatEntryDateTime(tx.date, (tx as any).createdAt, tx._id)}
+                          </td>
                       <td className="py-2.5 px-3">
                         <Badge
                           variant={
@@ -117,8 +134,10 @@ export const CardLedgerModal: React.FC<CardLedgerModalProps> = ({
                         {formatINR(tx.balanceAfter)}
                       </td>
                     </tr>
-                  ))
-                )}
+                  </React.Fragment>
+                );
+              })
+            )}
               </tbody>
             </table>
           </div>

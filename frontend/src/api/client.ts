@@ -263,4 +263,79 @@ export const getEffectiveEntryDateAndTime = (
   return { date: dateString, time: getLocalTimeString() };
 };
 
+/**
+ * Extracts a normalized local calendar date key ('YYYY-MM-DD') for an entry,
+ * prioritizing the user's recorded date or creation timestamp.
+ */
+export const getEntryDateKey = (
+  dateStr?: string | Date,
+  createdAtStr?: string | Date,
+  entryId?: string
+): string => {
+  if (!dateStr && !createdAtStr && !entryId) return '';
 
+  const dateObj = dateStr ? new Date(dateStr) : undefined;
+  const isDateValid = !!(dateObj && !isNaN(dateObj.getTime()));
+
+  if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) {
+    return dateStr.trim();
+  }
+
+  if (isDateValid && !isMidnightUtc(dateObj)) {
+    return getLocalDateString(dateObj);
+  }
+
+  if (createdAtStr) {
+    const createdObj = new Date(createdAtStr);
+    if (!isNaN(createdObj.getTime())) {
+      return getLocalDateString(createdObj);
+    }
+  }
+
+  if (entryId) {
+    const idDate = getTimestampFromObjectId(entryId);
+    if (idDate) {
+      return getLocalDateString(idDate);
+    }
+  }
+
+  if (isDateValid) {
+    return getLocalDateString(dateObj);
+  }
+
+  return '';
+};
+
+/**
+ * Formats a calendar date string (YYYY-MM-DD) into a user-friendly day separator label:
+ * - "Today, 08 Oct 2026"
+ * - "Yesterday, 07 Oct 2026"
+ * - "Wed, 07 Oct 2026" (for older days)
+ */
+export const formatDaySeparatorLabel = (dateStr: string): string => {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const targetDate = new Date(y, m - 1, d, 12, 0, 0);
+  if (isNaN(targetDate.getTime())) return '';
+
+  const todayStr = getLocalDateString(new Date());
+  const yest = new Date();
+  yest.setDate(yest.getDate() - 1);
+  const yesterdayStr = getLocalDateString(yest);
+
+  const formatted = targetDate.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  if (dateStr === todayStr) {
+    return `Today, ${formatted}`;
+  }
+  if (dateStr === yesterdayStr) {
+    return `Yesterday, ${formatted}`;
+  }
+
+  const weekday = targetDate.toLocaleDateString('en-IN', { weekday: 'short' });
+  return `${weekday}, ${formatted}`;
+};

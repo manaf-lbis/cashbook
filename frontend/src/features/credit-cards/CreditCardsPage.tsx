@@ -7,13 +7,14 @@ import {
   Plus,
   Edit3,
 } from 'lucide-react';
-import { apiClient, formatINR, formatDate, formatDateTime, formatEntryDateTime } from '../../api/client';
+import { apiClient, formatINR, formatDate, formatDateTime, formatEntryDateTime, getEntryDateKey } from '../../api/client';
 import { ICreditCard, ICreditCardTransaction, CreditCardTransactionType, ApiResponse } from '../../types';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
+import { DaySeparator } from '../../components/ui/DaySeparator';
 import { useToast } from '../../context/ToastContext';
 import { useAccounts } from '../../context/AccountContext';
 import { EditCardTransactionModal } from './components/EditCardTransactionModal';
@@ -502,9 +503,23 @@ export const CreditCardsPage: React.FC = () => {
               {loadingTx ? (
                 <div className="py-16 text-center text-xs text-slate-400">Loading card statement...</div>
               ) : transactions.length > 0 ? (
-                transactions.map((tx) => (
-                  <React.Fragment key={tx._id}>
-                    {/* Mobile Card Layout (< sm) */}
+                transactions.map((tx, idx) => {
+                  const dateKey = getEntryDateKey(tx.date, (tx as any).createdAt, tx._id);
+                  const prevDateKey =
+                    idx > 0
+                      ? getEntryDateKey(transactions[idx - 1].date, (transactions[idx - 1] as any).createdAt, transactions[idx - 1]._id)
+                      : null;
+                  const showSeparator = idx === 0 || dateKey !== prevDateKey;
+
+                  return (
+                    <React.Fragment key={tx._id}>
+                      {showSeparator && (
+                        <DaySeparator
+                          date={dateKey}
+                          type="card"
+                        />
+                      )}
+                      {/* Mobile Card Layout (< sm) */}
                     <div className="sm:hidden p-3 rounded-xl border border-slate-200/90 bg-white hover:border-slate-300 shadow-2xs space-y-2 transition-colors">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -605,8 +620,8 @@ export const CreditCardsPage: React.FC = () => {
                       </div>
                     </div>
                   </React.Fragment>
-                ))
-              ) : (
+                );
+              })) : (
                 <div className="py-24 text-center text-sm text-slate-400">
                   No card entries recorded yet. Tap <strong>Cash Drawn / Swipe ₹</strong> or <strong>Pay Card Bill ₹</strong> below.
                 </div>

@@ -21,7 +21,7 @@ import {
   ArrowLeft,
   ChevronDown,
 } from 'lucide-react';
-import { apiClient, formatINR, formatDateTime, formatEntryDateTime } from '../../api/client';
+import { apiClient, formatINR, formatDateTime, formatEntryDateTime, getEntryDateKey } from '../../api/client';
 import {
   IDayBookMonth,
   IBiller,
@@ -35,6 +35,7 @@ import { useAccounts } from '../../context/AccountContext';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
+import { DaySeparator } from '../../components/ui/DaySeparator';
 import { AddBillerModal } from './components/AddBillerModal';
 import { AddSalesEntryModal } from './components/AddSalesEntryModal';
 import { EditSalesEntryModal } from './components/EditSalesEntryModal';
@@ -606,10 +607,35 @@ export const DayBookPage: React.FC = () => {
                   </p>
                 </div>
               ) : (
-                entries.map((entry) => {
-                  const isDeleted = !!entry.isDeleted;
+                entries.map((entry, index) => {
+                  const isDeleted = !entry.isDeleted;
+                  const dateKey = getEntryDateKey(entry.date, entry.createdAt, entry._id);
+                  const prevDateKey =
+                    index > 0
+                      ? getEntryDateKey(entries[index - 1].date, entries[index - 1].createdAt, entries[index - 1]._id)
+                      : null;
+                  const showSeparator = index === 0 || dateKey !== prevDateKey;
+
+                  let dayTotal: number | undefined = undefined;
+                  let dayCount: number | undefined = undefined;
+                  if (showSeparator) {
+                    const sameDayEntries = entries.filter(
+                      (e) => !e.isDeleted && getEntryDateKey(e.date, e.createdAt, e._id) === dateKey
+                    );
+                    dayCount = sameDayEntries.length;
+                    dayTotal = sameDayEntries.reduce((sum, e) => sum + e.amount, 0);
+                  }
+
                   return (
                     <React.Fragment key={entry._id}>
+                      {showSeparator && (
+                        <DaySeparator
+                          date={dateKey}
+                          count={dayCount}
+                          totalAmount={dayTotal}
+                          type="sales"
+                        />
+                      )}
                       {/* 1. Mobile Card Layout (sm:hidden) */}
                       <div
                         className={`sm:hidden p-3 rounded-xl border transition-colors flex flex-col gap-2 ${

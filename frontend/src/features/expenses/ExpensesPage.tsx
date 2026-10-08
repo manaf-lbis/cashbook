@@ -11,10 +11,11 @@ import {
   Trash2,
   Lock,
 } from 'lucide-react';
-import { apiClient, formatINR, formatDateTime, formatDate, formatEntryDateTime } from '../../api/client';
+import { apiClient, formatINR, formatDateTime, formatDate, formatEntryDateTime, getEntryDateKey } from '../../api/client';
 import { IExpense, IExpenseCategory, ApiResponse } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
+import { DaySeparator } from '../../components/ui/DaySeparator';
 import { useToast } from '../../context/ToastContext';
 import { useAccounts } from '../../context/AccountContext';
 import { AddExpenseModal } from './components/AddExpenseModal';
@@ -407,10 +408,35 @@ export const ExpensesPage: React.FC = () => {
                   </p>
                 </div>
               ) : (
-                expenses.map((exp) => {
-                  const isDeleted = !!exp.isDeleted;
+                expenses.map((exp, index) => {
+                  const isDeleted = !exp.isDeleted;
+                  const dateKey = getEntryDateKey(exp.date, exp.createdAt, exp._id);
+                  const prevDateKey =
+                    index > 0
+                      ? getEntryDateKey(expenses[index - 1].date, expenses[index - 1].createdAt, expenses[index - 1]._id)
+                      : null;
+                  const showSeparator = index === 0 || dateKey !== prevDateKey;
+
+                  let dayTotal: number | undefined = undefined;
+                  let dayCount: number | undefined = undefined;
+                  if (showSeparator) {
+                    const sameDayExpenses = expenses.filter(
+                      (e) => !e.isDeleted && getEntryDateKey(e.date, e.createdAt, e._id) === dateKey
+                    );
+                    dayCount = sameDayExpenses.length;
+                    dayTotal = sameDayExpenses.reduce((sum, e) => sum + e.amount, 0);
+                  }
+
                   return (
                     <React.Fragment key={exp._id}>
+                      {showSeparator && (
+                        <DaySeparator
+                          date={dateKey}
+                          count={dayCount}
+                          totalAmount={dayTotal}
+                          type="expense"
+                        />
+                      )}
                       {/* 1. Mobile Card (sm:hidden) */}
                       <div
                         className={`sm:hidden p-3 rounded-xl border transition-colors flex flex-col gap-2 ${

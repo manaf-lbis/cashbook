@@ -11,13 +11,14 @@ import {
   Trash2,
   Lock,
 } from 'lucide-react';
-import { apiClient, formatINR, formatDate, formatDateTime, formatEntryDateTime } from '../../api/client';
+import { apiClient, formatINR, formatDate, formatDateTime, formatEntryDateTime, getEntryDateKey } from '../../api/client';
 import { ICredit, ICreditEntry, CreditTransactionType, ApiResponse } from '../../types';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
+import { DaySeparator } from '../../components/ui/DaySeparator';
 import { useToast } from '../../context/ToastContext';
 import { useAccounts } from '../../context/AccountContext';
 import { EditCreditEntryModal } from './components/EditCreditEntryModal';
@@ -489,11 +490,24 @@ export const CreditsPage: React.FC = () => {
             {/* Entries Stream */}
             <div className="flex-1 overflow-y-auto divide-y divide-slate-100 px-4 sm:px-6 py-3 sm:py-0 space-y-3 sm:space-y-0">
               {selectedCredit.entries && selectedCredit.entries.length > 0 ? (
-                [...selectedCredit.entries].reverse().map((entry, idx) => {
-                  const isDeleted = !!entry.isDeleted;
-                  return (
-                    <React.Fragment key={entry._id || idx}>
-                      {/* Mobile Card Layout (< sm) */}
+                [...selectedCredit.entries].reverse().map((entry, idx, revEntries) => {
+                    const isDeleted = !!entry.isDeleted;
+                    const dateKey = getEntryDateKey(entry.date, (entry as any).createdAt, (entry as any)._id);
+                    const prevDateKey =
+                      idx > 0
+                        ? getEntryDateKey(revEntries[idx - 1].date, (revEntries[idx - 1] as any).createdAt, (revEntries[idx - 1] as any)._id)
+                        : null;
+                    const showSeparator = idx === 0 || dateKey !== prevDateKey;
+
+                    return (
+                      <React.Fragment key={entry._id || idx}>
+                        {showSeparator && (
+                          <DaySeparator
+                            date={dateKey}
+                            type="credit"
+                          />
+                        )}
+                        {/* Mobile Card Layout (< sm) */}
                       <div
                         className={`sm:hidden p-3.5 rounded-xl border transition-colors space-y-2.5 ${
                           isDeleted
@@ -722,8 +736,7 @@ export const CreditsPage: React.FC = () => {
                       </div>
                     </React.Fragment>
                   );
-                })
-              ) : (
+                })) : (
                 <div className="py-24 text-center text-sm text-slate-400">
                   No entries recorded yet. Click <strong>You Gave ₹</strong> or <strong>You Got ₹</strong> below.
                 </div>

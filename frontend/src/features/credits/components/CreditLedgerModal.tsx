@@ -1,8 +1,9 @@
 import React from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import { ICredit, CreditTransactionType } from '../../../types';
-import { formatINR, formatDateTime, formatEntryDateTime } from '../../../api/client';
+import { formatINR, formatDateTime, formatEntryDateTime, getEntryDateKey } from '../../../api/client';
 import { Badge } from '../../../components/ui/Badge';
+import { DaySeparator } from '../../../components/ui/DaySeparator';
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 
 interface CreditLedgerModalProps {
@@ -60,11 +61,27 @@ export const CreditLedgerModal: React.FC<CreditLedgerModalProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {credit.entries && credit.entries.length > 0 ? (
-                credit.entries.map((entry, idx) => (
-                  <tr key={entry._id || idx} className="hover:bg-slate-50">
-                    <td className="py-2.5 px-3 font-mono text-slate-500">
-                      {formatEntryDateTime(entry.date, (entry as any).createdAt, (entry as any)._id)}
-                    </td>
+                credit.entries.map((entry, idx) => {
+                  const dateKey = getEntryDateKey(entry.date, (entry as any).createdAt, (entry as any)._id);
+                  const prevDateKey =
+                    idx > 0
+                      ? getEntryDateKey(credit.entries[idx - 1].date, (credit.entries[idx - 1] as any).createdAt, (credit.entries[idx - 1] as any)._id)
+                      : null;
+                  const showSeparator = idx === 0 || dateKey !== prevDateKey;
+
+                  return (
+                    <React.Fragment key={entry._id || idx}>
+                      {showSeparator && (
+                        <tr>
+                          <td colSpan={4} className="p-0 border-none bg-slate-50/40">
+                            <DaySeparator date={dateKey} type="credit" className="py-1" />
+                          </td>
+                        </tr>
+                      )}
+                      <tr className="hover:bg-slate-50">
+                        <td className="py-2.5 px-3 font-mono text-slate-500">
+                          {formatEntryDateTime(entry.date, (entry as any).createdAt, (entry as any)._id)}
+                        </td>
                     <td className="py-2.5 px-3">
                       <Badge
                         variant={entry.type === CreditTransactionType.GIVEN ? 'rose' : 'emerald'}
@@ -87,8 +104,10 @@ export const CreditLedgerModal: React.FC<CreditLedgerModalProps> = ({
                       {formatINR(entry.amount)}
                     </td>
                   </tr>
-                ))
-              ) : (
+                </React.Fragment>
+              );
+            })
+          ) : (
                 <tr>
                   <td colSpan={4} className="py-6 text-center text-slate-400">
                     No transactions recorded for this party.
