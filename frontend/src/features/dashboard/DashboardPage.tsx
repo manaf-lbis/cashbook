@@ -360,7 +360,7 @@ export const DashboardPage: React.FC = () => {
                   {recentTransactions.slice(0, 8).map((tx) => (
                     <tr key={tx._id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="py-2.5 px-3 text-slate-500 font-mono text-[11px]">
-                        {formatEntryDateTime(tx.date, (tx as any).createdAt)}
+                        {formatEntryDateTime(tx.date, (tx as any).createdAt, tx._id)}
                       </td>
                       <td className="py-2.5 px-3 font-medium text-slate-800">
                         {tx.accountId?.name || 'Account'}

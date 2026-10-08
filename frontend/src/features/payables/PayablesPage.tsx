@@ -508,7 +508,7 @@ export const PayablesPage: React.FC = () => {
                                     : 'text-slate-800'
                                 }`}
                               >
-                                {formatEntryDateTime(entry.date, (entry as any).createdAt)}
+                                {formatEntryDateTime(entry.date, (entry as any).createdAt, (entry as any)._id)}
                               </span>
                               {entry.isReconciled && !isDeleted && (
                                 <span
@@ -616,7 +616,7 @@ export const PayablesPage: React.FC = () => {
                                   : 'text-slate-800'
                               }`}
                             >
-                              {formatEntryDateTime(entry.date, (entry as any).createdAt)}
+                              {formatEntryDateTime(entry.date, (entry as any).createdAt, (entry as any)._id)}
                             </p>
                             {entry.isReconciled && !isDeleted && (
                               <span

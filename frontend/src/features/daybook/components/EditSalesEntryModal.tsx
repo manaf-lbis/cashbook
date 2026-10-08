@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { X, Edit3, History, Check, Clock } from 'lucide-react';
-import { apiClient, formatINR, formatDateTime, getLocalDateString, getLocalTimeString } from '../../../api/client';
+import {
+  apiClient,
+  formatINR,
+  formatDateTime,
+  getLocalDateString,
+  getLocalTimeString,
+  combineDateAndTime,
+  getEffectiveEntryDateAndTime,
+} from '../../../api/client';
 import { useToast } from '../../../context/ToastContext';
 import { useAccounts } from '../../../context/AccountContext';
 import { IDayBookEntry } from '../../../types';
@@ -33,14 +41,18 @@ export const EditSalesEntryModal: React.FC<EditSalesEntryModalProps> = ({
   const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
-    if (entry) {
+    if (entry && isOpen) {
       setAmount(entry.amount.toString());
       setDescription(entry.remarks || '');
       setCustomerName(entry.customerName || '');
       setBillNumber(entry.billNumber || '');
-      const entryDate = entry.date ? new Date(entry.date) : new Date();
-      setDate(getLocalDateString(entryDate));
-      setTime(getLocalTimeString(entryDate));
+      const { date: dVal, time: tVal } = getEffectiveEntryDateAndTime(
+        entry.date,
+        entry.createdAt,
+        entry._id
+      );
+      setDate(dVal);
+      setTime(tVal);
       setNote('');
       setShowHistory(false);
     }
@@ -58,11 +70,7 @@ export const EditSalesEntryModal: React.FC<EditSalesEntryModalProps> = ({
 
     try {
       setIsSubmitting(true);
-      let submitDate: string | undefined = undefined;
-      if (date) {
-        const localDateTime = new Date(`${date}T${time || '12:00'}:00`);
-        submitDate = !isNaN(localDateTime.getTime()) ? localDateTime.toISOString() : undefined;
-      }
+      const submitDate = date ? combineDateAndTime(date, time).toISOString() : undefined;
 
       const res = await apiClient.put(`/daybook/entries/${entry._id}`, {
         amount: numAmount,

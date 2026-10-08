@@ -63,7 +63,7 @@ export const CreditLedgerModal: React.FC<CreditLedgerModalProps> = ({
                 credit.entries.map((entry, idx) => (
                   <tr key={entry._id || idx} className="hover:bg-slate-50">
                     <td className="py-2.5 px-3 font-mono text-slate-500">
-                      {formatEntryDateTime(entry.date, (entry as any).createdAt)}
+                      {formatEntryDateTime(entry.date, (entry as any).createdAt, (entry as any)._id)}
                     </td>
                     <td className="py-2.5 px-3">
                       <Badge

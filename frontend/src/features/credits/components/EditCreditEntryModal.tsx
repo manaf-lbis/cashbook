@@ -2,7 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
-import { apiClient, getLocalDateString, getLocalTimeString } from '../../../api/client';
+import {
+  apiClient,
+  getLocalDateString,
+  getLocalTimeString,
+  combineDateAndTime,
+  getEffectiveEntryDateAndTime,
+} from '../../../api/client';
 import { useToast } from '../../../context/ToastContext';
 import { useAccounts } from '../../../context/AccountContext';
 import { ICreditEntry, CreditTransactionType } from '../../../types';
@@ -33,12 +39,16 @@ export const EditCreditEntryModal: React.FC<EditCreditEntryModalProps> = ({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (entry) {
+    if (entry && isOpen) {
       setAmount(entry.amount.toString());
       setRemarks(entry.remarks || '');
-      const entryDate = entry.date ? new Date(entry.date) : new Date();
-      setDate(getLocalDateString(entryDate));
-      setTime(getLocalTimeString(entryDate));
+      const { date: dVal, time: tVal } = getEffectiveEntryDateAndTime(
+        entry.date,
+        (entry as any).createdAt,
+        (entry as any)._id
+      );
+      setDate(dVal);
+      setTime(tVal);
     }
   }, [entry, isOpen]);
 
@@ -56,11 +66,7 @@ export const EditCreditEntryModal: React.FC<EditCreditEntryModalProps> = ({
 
     try {
       setLoading(true);
-      let submitDate: string | undefined = undefined;
-      if (date) {
-        const localDateTime = new Date(`${date}T${time || '12:00'}:00`);
-        submitDate = !isNaN(localDateTime.getTime()) ? localDateTime.toISOString() : undefined;
-      }
+      const submitDate = date ? combineDateAndTime(date, time).toISOString() : undefined;
 
       await apiClient.put(`/credits/${creditId}/entries/${entry._id}`, {
         amount: numAmount,

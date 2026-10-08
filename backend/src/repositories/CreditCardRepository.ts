@@ -28,7 +28,7 @@ export class CreditCardTransactionRepository extends BaseRepository<ICreditCardT
   async getTransactionsByCard(cardId: string, limit = 50): Promise<ICreditCardTransaction[]> {
     return await this._model
       .find({ cardId })
-      .sort({ date: -1 })
+      .sort({ date: -1, createdAt: -1, _id: -1 })
       .limit(limit)
       .populate('depositToAccountId', 'name type')
       .populate('paidFromAccountId', 'name type')

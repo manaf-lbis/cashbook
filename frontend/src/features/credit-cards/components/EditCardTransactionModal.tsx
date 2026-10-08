@@ -2,7 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
-import { apiClient, getLocalDateString, getLocalTimeString } from '../../../api/client';
+import {
+  apiClient,
+  getLocalDateString,
+  getLocalTimeString,
+  combineDateAndTime,
+  getEffectiveEntryDateAndTime,
+} from '../../../api/client';
 import { useToast } from '../../../context/ToastContext';
 import { useAccounts } from '../../../context/AccountContext';
 import { ICreditCardTransaction, CreditCardTransactionType } from '../../../types';
@@ -31,12 +37,16 @@ export const EditCardTransactionModal: React.FC<EditCardTransactionModalProps> =
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (transaction) {
+    if (transaction && isOpen) {
       setAmount(transaction.amount.toString());
       setRemarks(transaction.remarks || '');
-      const txDate = transaction.date ? new Date(transaction.date) : new Date();
-      setDate(getLocalDateString(txDate));
-      setTime(getLocalTimeString(txDate));
+      const { date: dVal, time: tVal } = getEffectiveEntryDateAndTime(
+        transaction.date,
+        (transaction as any).createdAt,
+        transaction._id
+      );
+      setDate(dVal);
+      setTime(tVal);
     }
   }, [transaction, isOpen]);
 
@@ -54,11 +64,7 @@ export const EditCardTransactionModal: React.FC<EditCardTransactionModalProps> =
 
     try {
       setLoading(true);
-      let submitDate: string | undefined = undefined;
-      if (date) {
-        const localDateTime = new Date(`${date}T${time || '12:00'}:00`);
-        submitDate = !isNaN(localDateTime.getTime()) ? localDateTime.toISOString() : undefined;
-      }
+      const submitDate = date ? combineDateAndTime(date, time).toISOString() : undefined;
 
       await apiClient.put(`/credit-cards/transactions/${transaction._id}`, {
         amount: numAmount,

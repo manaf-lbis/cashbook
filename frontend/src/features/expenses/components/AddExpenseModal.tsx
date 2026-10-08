@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
-import { apiClient, getLocalDateString, getLocalTimeString } from '../../../api/client';
+import { apiClient, getLocalDateString, getLocalTimeString, combineDateAndTime } from '../../../api/client';
 import { useToast } from '../../../context/ToastContext';
 import { useAccounts } from '../../../context/AccountContext';
 
@@ -27,6 +27,13 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
   const [time, setTime] = useState(() => getLocalTimeString());
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (isOpen) {
+      setDate(getLocalDateString());
+      setTime(getLocalTimeString());
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,11 +50,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
     try {
       setLoading(true);
-      let submitDate: string | undefined = undefined;
-      if (date) {
-        const localDateTime = new Date(`${date}T${time || '12:00'}:00`);
-        submitDate = !isNaN(localDateTime.getTime()) ? localDateTime.toISOString() : undefined;
-      }
+      const submitDate = combineDateAndTime(date, time).toISOString();
 
       await apiClient.post('/expenses', {
         title: title.trim(),

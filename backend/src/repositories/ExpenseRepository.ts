@@ -9,7 +9,7 @@ export class ExpenseRepository extends BaseRepository<IExpense> {
   async getExpensesWithDetails(filter: any = {}, limit = 50, skip = 0): Promise<IExpense[]> {
     return await this._model
       .find(filter)
-      .sort({ date: -1 })
+      .sort({ date: -1, createdAt: -1, _id: -1 })
       .skip(skip)
       .limit(limit)
       .populate('accountId', 'name type bankName')

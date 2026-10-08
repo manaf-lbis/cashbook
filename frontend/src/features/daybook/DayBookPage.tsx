@@ -658,7 +658,7 @@ export const DayBookPage: React.FC = () => {
                         {/* Bottom: Date/Time, Mode, Badges & Action Buttons */}
                         <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 text-slate-500">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-mono text-[11px] text-slate-500">{formatEntryDateTime(entry.date, entry.createdAt)}</span>
+                            <span className="font-mono text-[11px] text-slate-500">{formatEntryDateTime(entry.date, entry.createdAt, entry._id)}</span>
                             <span className="text-slate-300">•</span>
                             <span className="inline-flex items-center gap-1 text-[11px] text-slate-600 font-medium">
                               <Wallet className="w-3 h-3 text-emerald-600" /> Drawer
@@ -742,7 +742,7 @@ export const DayBookPage: React.FC = () => {
                               : 'text-slate-600'
                           }`}
                         >
-                          {formatEntryDateTime(entry.date, entry.createdAt)}
+                          {formatEntryDateTime(entry.date, entry.createdAt, entry._id)}
                         </div>
 
                         {/* Bill # */}

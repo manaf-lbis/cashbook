@@ -10,7 +10,7 @@ export class DayBookRepository extends BaseRepository<IDayBookEntry> {
   async findByBillerAndMonth(billerId: string, monthKey: string): Promise<IDayBookEntry[]> {
     return await this.find(
       { billerId: new mongoose.Types.ObjectId(billerId), monthKey },
-      { date: -1, createdAt: -1 },
+      { date: -1, createdAt: -1, _id: -1 },
       undefined,
       undefined,
       'accountId'
@@ -20,7 +20,7 @@ export class DayBookRepository extends BaseRepository<IDayBookEntry> {
   async findByMonth(monthKey: string): Promise<IDayBookEntry[]> {
     return await this.find(
       { monthKey },
-      { date: -1, createdAt: -1 },
+      { date: -1, createdAt: -1, _id: -1 },
       undefined,
       undefined,
       ['billerId', 'accountId']

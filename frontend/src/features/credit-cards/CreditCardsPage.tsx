@@ -509,7 +509,7 @@ export const CreditCardsPage: React.FC = () => {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-slate-800 font-mono">
-                            {formatEntryDateTime(tx.date, (tx as any).createdAt)}
+                            {formatEntryDateTime(tx.date, (tx as any).createdAt, tx._id)}
                           </p>
                           <p className="text-xs text-slate-700 mt-1 font-semibold leading-tight">
                             {tx.remarks ||
@@ -562,7 +562,7 @@ export const CreditCardsPage: React.FC = () => {
                     <div className="hidden sm:flex py-3.5 items-center justify-between hover:bg-slate-50/50 transition-colors">
                       <div>
                         <p className="text-sm font-bold text-slate-800 font-mono">
-                          {formatEntryDateTime(tx.date, (tx as any).createdAt)}
+                          {formatEntryDateTime(tx.date, (tx as any).createdAt, tx._id)}
                         </p>
                         <p className="text-sm text-slate-600 mt-1 font-medium">
                           {tx.remarks || (tx.type === CreditCardTransactionType.PAYMENT ? 'Bill Payment' : 'Cash Drawn / Purchase')}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Receipt, ChevronDown, ChevronUp, Calendar, Tag, CreditCard, Sparkles } from 'lucide-react';
-import { apiClient, getLocalDateString, getLocalTimeString } from '../../../api/client';
+import { apiClient, getLocalDateString, getLocalTimeString, combineDateAndTime } from '../../../api/client';
 import { useToast } from '../../../context/ToastContext';
 import { useAccounts } from '../../../context/AccountContext';
 import { IBiller } from '../../../types';
@@ -40,12 +40,16 @@ export const AddSalesEntryModal: React.FC<AddSalesEntryModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (defaultBillerId) {
-      setBillerId(defaultBillerId);
-    } else if (billers.length > 0 && !billerId) {
-      setBillerId(billers[0]._id);
+    if (isOpen) {
+      setDate(getLocalDateString());
+      setTime(getLocalTimeString());
+      if (defaultBillerId) {
+        setBillerId(defaultBillerId);
+      } else if (billers.length > 0 && !billerId) {
+        setBillerId(billers[0]._id);
+      }
     }
-  }, [defaultBillerId, billers, billerId]);
+  }, [isOpen, defaultBillerId, billers]);
 
   if (!isOpen) return null;
 
@@ -59,13 +63,7 @@ export const AddSalesEntryModal: React.FC<AddSalesEntryModalProps> = ({
 
     try {
       setIsSubmitting(true);
-      let submitDate: string;
-      if (date) {
-        const localDateTime = new Date(`${date}T${time || '12:00'}:00`);
-        submitDate = !isNaN(localDateTime.getTime()) ? localDateTime.toISOString() : new Date().toISOString();
-      } else {
-        submitDate = new Date().toISOString();
-      }
+      const submitDate = combineDateAndTime(date, time).toISOString();
 
       const res = await apiClient.post('/daybook/entries', {
         amount: numAmount,

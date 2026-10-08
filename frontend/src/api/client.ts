@@ -119,29 +119,148 @@ export const formatDateTime = (dateStr?: string | Date): string => {
 };
 
 /**
- * Accurately formats an entry timestamp.
- * If date was stored with midnight UTC (00:00:00) due to date-only pickers,
- * but createdAt contains the true creation time, combines date with createdAt time.
+ * Extracts creation timestamp from a 24-character hexadecimal MongoDB ObjectId.
+ * The first 4 bytes (8 hex characters) encode the Unix timestamp in seconds.
  */
-export const formatEntryDateTime = (dateStr?: string | Date, createdAtStr?: string | Date): string => {
-  if (!dateStr && !createdAtStr) return '';
-  const dateObj = dateStr ? new Date(dateStr) : new Date(createdAtStr!);
-  if (isNaN(dateObj.getTime())) return '';
+export const getTimestampFromObjectId = (id?: string): Date | null => {
+  if (!id || typeof id !== 'string') return null;
+  const cleanId = id.trim();
+  if (!/^[0-9a-fA-F]{24}$/.test(cleanId)) return null;
+  try {
+    const seconds = parseInt(cleanId.substring(0, 8), 16);
+    if (isNaN(seconds) || seconds < 1577836800) {
+      return null;
+    }
+    const d = new Date(seconds * 1000);
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
+};
 
-  const isMidnightUtc =
-    dateObj.getUTCHours() === 0 &&
-    dateObj.getUTCMinutes() === 0 &&
-    dateObj.getUTCSeconds() === 0;
+/**
+ * Combines a local date string (YYYY-MM-DD) and optional time string (HH:mm)
+ * into a valid Date object without string-parsing or timezone quirks.
+ */
+export const combineDateAndTime = (dateStr: string, timeStr?: string): Date => {
+  if (!dateStr) return new Date();
+  const [year, month, day] = dateStr.split('-').map(Number);
+  if (timeStr && timeStr.includes(':')) {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return new Date(year, month - 1, day, hours || 0, minutes || 0, 0);
+  }
+  const today = getLocalDateString();
+  if (dateStr === today) {
+    const now = new Date();
+    return new Date(year, month - 1, day, now.getHours(), now.getMinutes(), now.getSeconds());
+  }
+  return new Date(year, month - 1, day, 12, 0, 0);
+};
 
-  if (isMidnightUtc && createdAtStr) {
+/**
+ * Determines whether a date object represents midnight UTC (00:00:00.000Z),
+ * which is the default artifact of date-only pickers. In India (UTC+5:30),
+ * this incorrectly shows as 05:30 am.
+ */
+export const isMidnightUtc = (d: Date): boolean => {
+  return (
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0
+  );
+};
+
+/**
+ * Accurately formats an entry timestamp.
+ * - If `date` has a real time (not midnight UTC), formats `date`.
+ * - If `date` is midnight UTC (e.g. 05:30 am in IST), but `createdAt` has a real time,
+ *   combines the calendar date with `createdAt`'s time.
+ * - If both are midnight UTC or `createdAt` is missing, checks `entryId` (MongoDB ObjectId)
+ *   to extract the true second of creation.
+ * - If no real time is available at all, returns ONLY the calendar date (e.g. "07 Oct 2026")
+ *   so users never see the misleading "05:30 am".
+ */
+export const formatEntryDateTime = (
+  dateStr?: string | Date,
+  createdAtStr?: string | Date,
+  entryId?: string
+): string => {
+  if (!dateStr && !createdAtStr && !entryId) return '';
+
+  const dateObj = dateStr ? new Date(dateStr) : undefined;
+  const isDateValid = !!(dateObj && !isNaN(dateObj.getTime()));
+
+  // 1. If dateObj has a real, explicit time (not midnight UTC), format it directly
+  if (isDateValid && !isMidnightUtc(dateObj)) {
+    return formatDateTime(dateObj);
+  }
+
+  // 2. If dateObj was stored as midnight UTC (or missing), check createdAt
+  if (createdAtStr) {
     const createdObj = new Date(createdAtStr);
-    if (!isNaN(createdObj.getTime())) {
-      const dayPart = formatDate(dateStr || createdAtStr);
+    if (!isNaN(createdObj.getTime()) && !isMidnightUtc(createdObj)) {
+      const dayPart = formatDate(dateObj || createdObj);
       const timePart = formatTime(createdObj);
       return `${dayPart}, ${timePart}`;
     }
   }
 
-  return formatDateTime(dateObj);
+  // 3. Check MongoDB ObjectId timestamp from entryId
+  if (entryId) {
+    const idDate = getTimestampFromObjectId(entryId);
+    if (idDate && !isMidnightUtc(idDate)) {
+      const dayPart = formatDate(dateObj || idDate);
+      const timePart = formatTime(idDate);
+      return `${dayPart}, ${timePart}`;
+    }
+  }
+
+  // 4. Fallback: Show ONLY the calendar date. Never display misleading "05:30 am"!
+  if (isDateValid) {
+    return formatDate(dateObj);
+  }
+
+  if (createdAtStr) {
+    const createdObj = new Date(createdAtStr);
+    if (!isNaN(createdObj.getTime())) return formatDate(createdObj);
+  }
+
+  return '';
 };
+
+/**
+ * Helper for edit modals to populate initial date and time fields without
+ * accidentally defaulting to "05:30" due to midnight UTC storage.
+ */
+export const getEffectiveEntryDateAndTime = (
+  dateStr?: string | Date,
+  createdAtStr?: string | Date,
+  entryId?: string
+): { date: string; time: string } => {
+  const dateObj = dateStr ? new Date(dateStr) : undefined;
+  const isDateValid = !!(dateObj && !isNaN(dateObj.getTime()));
+
+  const dateString = isDateValid ? getLocalDateString(dateObj) : getLocalDateString();
+
+  if (isDateValid && !isMidnightUtc(dateObj)) {
+    return { date: dateString, time: getLocalTimeString(dateObj) };
+  }
+
+  if (createdAtStr) {
+    const createdObj = new Date(createdAtStr);
+    if (!isNaN(createdObj.getTime()) && !isMidnightUtc(createdObj)) {
+      return { date: dateString, time: getLocalTimeString(createdObj) };
+    }
+  }
+
+  if (entryId) {
+    const idDate = getTimestampFromObjectId(entryId);
+    if (idDate && !isMidnightUtc(idDate)) {
+      return { date: dateString, time: getLocalTimeString(idDate) };
+    }
+  }
+
+  return { date: dateString, time: getLocalTimeString() };
+};
+
 

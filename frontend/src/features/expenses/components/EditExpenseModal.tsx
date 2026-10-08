@@ -2,7 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
-import { apiClient, getLocalDateString, getLocalTimeString } from '../../../api/client';
+import {
+  apiClient,
+  getLocalDateString,
+  getLocalTimeString,
+  combineDateAndTime,
+  getEffectiveEntryDateAndTime,
+} from '../../../api/client';
 import { useToast } from '../../../context/ToastContext';
 import { useAccounts } from '../../../context/AccountContext';
 import { IExpense } from '../../../types';
@@ -29,12 +35,16 @@ export const EditExpenseModal: React.FC<EditExpenseModalProps> = ({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (expense) {
+    if (expense && isOpen) {
       setTitle(expense.title);
       setAmount(expense.amount.toString());
-      const expDate = expense.date ? new Date(expense.date) : new Date();
-      setDate(getLocalDateString(expDate));
-      setTime(getLocalTimeString(expDate));
+      const { date: dVal, time: tVal } = getEffectiveEntryDateAndTime(
+        expense.date,
+        (expense as any).createdAt,
+        expense._id
+      );
+      setDate(dVal);
+      setTime(tVal);
     }
   }, [expense, isOpen]);
 
@@ -54,11 +64,7 @@ export const EditExpenseModal: React.FC<EditExpenseModalProps> = ({
 
     try {
       setLoading(true);
-      let submitDate: string | undefined = undefined;
-      if (date) {
-        const localDateTime = new Date(`${date}T${time || '12:00'}:00`);
-        submitDate = !isNaN(localDateTime.getTime()) ? localDateTime.toISOString() : undefined;
-      }
+      const submitDate = date ? combineDateAndTime(date, time).toISOString() : undefined;
 
       await apiClient.put(`/expenses/${expense._id}`, {
         title: title.trim(),

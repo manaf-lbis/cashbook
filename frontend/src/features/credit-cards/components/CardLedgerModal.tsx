@@ -70,7 +70,7 @@ export const CardLedgerModal: React.FC<CardLedgerModalProps> = ({
                   transactions.map((tx) => (
                     <tr key={tx._id} className="hover:bg-slate-50">
                       <td className="py-2.5 px-3 font-mono text-slate-500">
-                        {formatEntryDateTime(tx.date, (tx as any).createdAt)}
+                        {formatEntryDateTime(tx.date, (tx as any).createdAt, tx._id)}
                       </td>
                       <td className="py-2.5 px-3">
                         <Badge
