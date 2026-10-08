@@ -40,6 +40,7 @@ export const ExpensesPage: React.FC = () => {
   // State
   const [categories, setCategories] = useState<IExpenseCategory[]>([]);
   const [expenses, setExpenses] = useState<IExpense[]>([]);
+  const [visibleCount, setVisibleCount] = useState<number>(30);
   const [selectedCategory, setSelectedCategory] = useState<IExpenseCategory | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingEntries, setLoadingEntries] = useState(false);
@@ -93,6 +94,7 @@ export const ExpensesPage: React.FC = () => {
       );
       if (res.data.success) {
         setExpenses(res.data.data);
+        setVisibleCount(30);
       }
     } catch (err: any) {
       showToast(err.message || 'Failed to load expenses', 'error');
@@ -392,7 +394,17 @@ export const ExpensesPage: React.FC = () => {
             </div>
 
             {/* Entries Stream */}
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-3 sm:px-6 space-y-2 sm:space-y-0">
+            <div
+              className="flex-1 overflow-y-auto divide-y divide-slate-100 p-3 sm:px-6 space-y-2 sm:space-y-0"
+              onScroll={(e) => {
+                const target = e.currentTarget;
+                if (target.scrollHeight - target.scrollTop <= target.clientHeight + 250) {
+                  if (visibleCount < expenses.length) {
+                    setVisibleCount((prev) => Math.min(prev + 30, expenses.length));
+                  }
+                }
+              }}
+            >
               {loadingEntries ? (
                 <div className="py-20 text-center text-xs text-slate-400">Loading expenses...</div>
               ) : expenses.length === 0 ? (
@@ -408,12 +420,12 @@ export const ExpensesPage: React.FC = () => {
                   </p>
                 </div>
               ) : (
-                expenses.map((exp, index) => {
-                  const isDeleted = !exp.isDeleted;
+                expenses.slice(0, visibleCount).map((exp, index, currentSlice) => {
+                  const isDeleted = !!exp.isDeleted;
                   const dateKey = getEntryDateKey(exp.date, exp.createdAt, exp._id);
                   const prevDateKey =
                     index > 0
-                      ? getEntryDateKey(expenses[index - 1].date, expenses[index - 1].createdAt, expenses[index - 1]._id)
+                      ? getEntryDateKey(currentSlice[index - 1].date, currentSlice[index - 1].createdAt, currentSlice[index - 1]._id)
                       : null;
                   const showSeparator = index === 0 || dateKey !== prevDateKey;
 
@@ -609,6 +621,25 @@ export const ExpensesPage: React.FC = () => {
                     </React.Fragment>
                   );
                 })
+              )}
+
+              {/* Infinite scroll load more / all loaded status */}
+              {expenses.length > 0 && (
+                <div className="py-4 text-center">
+                  {visibleCount < expenses.length ? (
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount((prev) => Math.min(prev + 30, expenses.length))}
+                      className="px-4 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-full border border-slate-200 transition-colors shadow-2xs"
+                    >
+                      Loading {visibleCount} of {expenses.length} expenses • Click or scroll for more
+                    </button>
+                  ) : expenses.length > 30 ? (
+                    <span className="text-[11px] text-slate-400">
+                      All {expenses.length} expenses loaded for this category
+                    </span>
+                  ) : null}
+                </div>
               )}
             </div>
 

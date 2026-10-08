@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   CalendarDays,
   Lock,
@@ -50,6 +50,7 @@ export const DayBookPage: React.FC = () => {
   const [billers, setBillers] = useState<IBiller[]>([]);
   const [selectedBillerId, setSelectedBillerId] = useState<string>('');
   const [entries, setEntries] = useState<IDayBookEntry[]>([]);
+  const [visibleCount, setVisibleCount] = useState<number>(30);
   const [totalMonthSales, setTotalMonthSales] = useState<number>(0);
   const [totalMonthBills, setTotalMonthBills] = useState<number>(0);
 
@@ -140,6 +141,7 @@ export const DayBookPage: React.FC = () => {
       );
       if (res.data.success) {
         setEntries(res.data.data.entries);
+        setVisibleCount(30);
       }
     } catch (err: any) {
       showToast(err.message || 'Failed to load entries', 'error');
@@ -589,7 +591,17 @@ export const DayBookPage: React.FC = () => {
             </div>
 
             {/* Entries Timeline / Stream */}
-            <div className="flex-1 overflow-y-auto p-3 sm:px-6 divide-y divide-slate-100 space-y-2 sm:space-y-0">
+            <div
+              className="flex-1 overflow-y-auto p-3 sm:px-6 divide-y divide-slate-100 space-y-2 sm:space-y-0"
+              onScroll={(e) => {
+                const target = e.currentTarget;
+                if (target.scrollHeight - target.scrollTop <= target.clientHeight + 250) {
+                  if (visibleCount < entries.length) {
+                    setVisibleCount((prev) => Math.min(prev + 30, entries.length));
+                  }
+                }
+              }}
+            >
               {loadingEntries ? (
                 <div className="py-12 text-center text-xs text-slate-400">Loading sales records...</div>
               ) : entries.length === 0 ? (
@@ -605,14 +617,14 @@ export const DayBookPage: React.FC = () => {
                   </p>
                 </div>
               ) : (
-                entries.map((entry, index) => {
-                  const isDeleted = !entry.isDeleted;
-                  const dateKey = getEntryDateKey(entry.date, entry.createdAt, entry._id);
-                  const prevDateKey =
-                    index > 0
-                      ? getEntryDateKey(entries[index - 1].date, entries[index - 1].createdAt, entries[index - 1]._id)
-                      : null;
-                  const showSeparator = index === 0 || dateKey !== prevDateKey;
+                entries.slice(0, visibleCount).map((entry, index, currentSlice) => {
+                    const isDeleted = !!entry.isDeleted;
+                    const dateKey = getEntryDateKey(entry.date, entry.createdAt, entry._id);
+                    const prevDateKey =
+                      index > 0
+                        ? getEntryDateKey(currentSlice[index - 1].date, currentSlice[index - 1].createdAt, currentSlice[index - 1]._id)
+                        : null;
+                    const showSeparator = index === 0 || dateKey !== prevDateKey;
 
                   let dayTotal: number | undefined = undefined;
                   let dayCount: number | undefined = undefined;
@@ -858,6 +870,25 @@ export const DayBookPage: React.FC = () => {
                     </React.Fragment>
                   );
                 })
+              )}
+
+              {/* Infinite scroll load more / all loaded status */}
+              {entries.length > 0 && (
+                <div className="py-4 text-center">
+                  {visibleCount < entries.length ? (
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount((prev) => Math.min(prev + 30, entries.length))}
+                      className="px-4 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-full border border-slate-200 transition-colors shadow-2xs"
+                    >
+                      Loading {visibleCount} of {entries.length} entries • Click or scroll for more
+                    </button>
+                  ) : entries.length > 30 ? (
+                    <span className="text-[11px] text-slate-400">
+                      All {entries.length} records loaded for this month
+                    </span>
+                  ) : null}
+                </div>
               )}
             </div>
 
