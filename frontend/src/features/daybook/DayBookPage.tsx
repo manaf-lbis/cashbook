@@ -584,9 +584,7 @@ export const DayBookPage: React.FC = () => {
             {/* Entries Table Header (Desktop Only) */}
             <div className="hidden sm:flex px-6 py-2.5 bg-slate-100/70 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider items-center justify-between">
               <span className="w-48">DATE & TIME</span>
-              <span className="w-28">BILL #</span>
-              <span className="w-36">PAYMENT / A/C</span>
-              <span className="flex-1">CUSTOMER / REMARKS</span>
+              <span className="flex-1">REMARKS / CUSTOMER</span>
               <span className="w-36 text-right pr-2">SALE AMOUNT</span>
             </div>
 
@@ -645,26 +643,15 @@ export const DayBookPage: React.FC = () => {
                         {/* Top: Customer / Remarks / Bill # and Sale Amount */}
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {entry.billNumber && (
-                                <span
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border ${
-                                    isDeleted ? 'bg-slate-100 text-slate-400 line-through' : 'bg-slate-100 text-slate-700 border-slate-200'
-                                  }`}
-                                >
-                                  #{entry.billNumber}
-                                </span>
-                              )}
-                              <span
-                                className={`text-xs font-bold truncate ${
-                                  isDeleted ? 'text-slate-400 line-through decoration-rose-500' : 'text-slate-900'
-                                }`}
-                              >
-                                {entry.customerName || entry.remarks || 'Daily Sale'}
-                              </span>
-                            </div>
+                            <p
+                              className={`text-xs font-bold truncate ${
+                                isDeleted ? 'text-slate-400 line-through decoration-rose-500' : 'text-slate-900'
+                              }`}
+                            >
+                              {entry.remarks || entry.customerName || 'Daily Sale'}
+                            </p>
                             {entry.customerName && entry.remarks && (
-                              <p className="text-[11px] text-slate-500 truncate mt-0.5">{entry.remarks}</p>
+                              <p className="text-[11px] text-slate-500 truncate mt-0.5">{entry.customerName}</p>
                             )}
                           </div>
 
@@ -681,14 +668,10 @@ export const DayBookPage: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Bottom: Date/Time, Mode, Badges & Action Buttons */}
+                        {/* Bottom: Date/Time, Badges & Action Buttons */}
                         <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 text-slate-500">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-mono text-[11px] text-slate-500">{formatEntryDateTime(entry.date, entry.createdAt, entry._id)}</span>
-                            <span className="text-slate-300">•</span>
-                            <span className="inline-flex items-center gap-1 text-[11px] text-slate-600 font-medium">
-                              <Wallet className="w-3 h-3 text-emerald-600" /> Drawer
-                            </span>
 
                             {entry.isReconciled && !isDeleted && (
                               <span
@@ -769,40 +752,6 @@ export const DayBookPage: React.FC = () => {
                           }`}
                         >
                           {formatEntryDateTime(entry.date, entry.createdAt, entry._id)}
-                        </div>
-
-                        {/* Bill # */}
-                        <div className="w-28 text-xs font-mono">
-                          {entry.billNumber ? (
-                            <span
-                              className={`px-2 py-0.5 rounded font-semibold border ${
-                                isDeleted
-                                  ? 'bg-slate-100 text-slate-400 border-slate-200 line-through decoration-rose-500 decoration-2'
-                                  : 'bg-slate-100 text-slate-700 border-slate-200/80'
-                              }`}
-                            >
-                              {entry.billNumber}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          )}
-                        </div>
-
-                        {/* Account / Mode */}
-                        <div
-                          className={`w-32 text-xs ${
-                            isDeleted ? 'line-through decoration-rose-500 decoration-2 text-slate-400' : ''
-                          }`}
-                        >
-                          <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                            <Wallet
-                              className={`w-3.5 h-3.5 ${isDeleted ? 'text-slate-400' : 'text-emerald-600'}`}
-                            />
-                            <span className={isDeleted ? 'text-slate-400' : ''}>Cash Drawer</span>
-                          </div>
-                          <p className="text-[11px] text-slate-400 truncate">
-                            Counter Inflow
-                          </p>
                         </div>
 
                         {/* Customer / Remarks + Edited & Deleted Indicators */}
