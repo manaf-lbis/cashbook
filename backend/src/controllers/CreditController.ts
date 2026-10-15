@@ -29,6 +29,15 @@ export class CreditController {
     }
   };
 
+  createCustomer = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const credit = await this.creditService.createCustomer(req.body);
+      return ApiResponse.created(res, credit, 'Customer created successfully');
+    } catch (err) {
+      next(err);
+    }
+  };
+
   giveCredit = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const credit = await this.creditService.giveCredit(req.body);

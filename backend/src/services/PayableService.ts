@@ -18,6 +18,58 @@ export class PayableService {
     this.transactionRepo = new TransactionRepository();
   }
 
+  async createSupplier(dto: {
+    partyName: string;
+    phone?: string;
+    amount?: number;
+    accountId?: string;
+    date?: Date | string;
+    remarks?: string;
+    dueDate?: Date | string;
+  }) {
+    const trimmedName = dto.partyName.trim();
+    if (!trimmedName) {
+      throw ApiError.badRequest('Creditor name is required');
+    }
+
+    if (dto.amount && dto.amount > 0) {
+      return this.borrowFunds({
+        partyName: trimmedName,
+        phone: dto.phone?.trim() || undefined,
+        amount: dto.amount,
+        accountId: dto.accountId,
+        date: dto.date ? parseEntryDate(dto.date) : undefined,
+        remarks: dto.remarks?.trim() || 'Opening pending balance',
+        dueDate: dto.dueDate ? parseEntryDate(dto.dueDate) : undefined,
+      });
+    }
+
+    let payable = await this.payableRepo.findOne({
+      partyName: { $regex: new RegExp(`^${trimmedName}$`, 'i') },
+    });
+
+    if (payable) {
+      if (dto.phone && !payable.phone) {
+        payable.phone = dto.phone.trim();
+        await payable.save();
+      }
+      return payable;
+    }
+
+    payable = await this.payableRepo.create({
+      partyName: trimmedName,
+      phone: dto.phone?.trim() || undefined,
+      totalBorrowed: 0,
+      totalPaid: 0,
+      balancePending: 0,
+      status: 'ACTIVE',
+      entries: [],
+      dueDate: dto.dueDate ? parseEntryDate(dto.dueDate) : undefined,
+    });
+
+    return payable;
+  }
+
   async borrowFunds(dto: {
     partyName: string;
     phone?: string;

@@ -29,6 +29,15 @@ export class PayableController {
     }
   };
 
+  createSupplier = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const payable = await this.payableService.createSupplier(req.body);
+      return ApiResponse.created(res, payable, 'Supplier created successfully');
+    } catch (err) {
+      next(err);
+    }
+  };
+
   borrow = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const payable = await this.payableService.borrowFunds(req.body);

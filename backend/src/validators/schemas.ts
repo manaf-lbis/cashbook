@@ -55,6 +55,26 @@ export const UpdateCardTransactionSchema = z.object({
   date: z.string().optional(),
 });
 
+export const CreateCustomerSchema = z.object({
+  partyName: z.string().min(1, 'Party name is required').trim(),
+  phone: z.string().trim().optional(),
+  amount: z.number().min(0, 'Amount cannot be negative').optional().default(0),
+  accountId: z.string().optional(),
+  date: z.string().optional(),
+  remarks: z.string().trim().optional(),
+  dueDate: z.string().optional(),
+});
+
+export const CreateSupplierSchema = z.object({
+  partyName: z.string().min(1, 'Creditor name is required').trim(),
+  phone: z.string().trim().optional(),
+  amount: z.number().min(0, 'Amount cannot be negative').optional().default(0),
+  accountId: z.string().optional(),
+  date: z.string().optional(),
+  remarks: z.string().trim().optional(),
+  dueDate: z.string().optional(),
+});
+
 export const GiveCreditSchema = z.object({
   partyName: z.string().min(1, 'Party name is required').trim(),
   phone: z.string().trim().optional(),

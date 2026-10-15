@@ -144,11 +144,11 @@ export const PayablesPage: React.FC = () => {
 
     try {
       setSubmitting(true);
-      const res = await apiClient.post<ApiResponse<IPayable>>('/payables/borrow', {
+      const res = await apiClient.post<ApiResponse<IPayable>>('/payables', {
         partyName: newSuppName.trim(),
         phone: newSuppPhone.trim() || undefined,
-        amount: numAmount > 0 ? numAmount : 0.01,
-        remarks: numAmount > 0 ? 'Opening pending balance' : 'Supplier account created',
+        amount: numAmount > 0 ? numAmount : 0,
+        remarks: numAmount > 0 ? 'Opening pending balance' : undefined,
       });
 
       showToast(`Supplier "${newSuppName}" added!`, 'success');

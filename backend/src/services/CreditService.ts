@@ -18,6 +18,58 @@ export class CreditService {
     this.transactionRepo = new TransactionRepository();
   }
 
+  async createCustomer(dto: {
+    partyName: string;
+    phone?: string;
+    amount?: number;
+    accountId?: string;
+    date?: Date | string;
+    remarks?: string;
+    dueDate?: Date | string;
+  }) {
+    const trimmedName = dto.partyName.trim();
+    if (!trimmedName) {
+      throw ApiError.badRequest('Party name is required');
+    }
+
+    if (dto.amount && dto.amount > 0) {
+      return this.giveCredit({
+        partyName: trimmedName,
+        phone: dto.phone?.trim() || undefined,
+        amount: dto.amount,
+        accountId: dto.accountId,
+        date: dto.date ? parseEntryDate(dto.date) : undefined,
+        remarks: dto.remarks?.trim() || 'Opening credit balance',
+        dueDate: dto.dueDate ? parseEntryDate(dto.dueDate) : undefined,
+      });
+    }
+
+    let credit = await this.creditRepo.findOne({
+      partyName: { $regex: new RegExp(`^${trimmedName}$`, 'i') },
+    });
+
+    if (credit) {
+      if (dto.phone && !credit.phone) {
+        credit.phone = dto.phone.trim();
+        await credit.save();
+      }
+      return credit;
+    }
+
+    credit = await this.creditRepo.create({
+      partyName: trimmedName,
+      phone: dto.phone?.trim() || undefined,
+      totalGiven: 0,
+      totalRepaid: 0,
+      balanceDue: 0,
+      status: 'ACTIVE',
+      entries: [],
+      dueDate: dto.dueDate ? parseEntryDate(dto.dueDate) : undefined,
+    });
+
+    return credit;
+  }
+
   async giveCredit(dto: {
     partyName: string;
     phone?: string;

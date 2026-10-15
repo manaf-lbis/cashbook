@@ -147,11 +147,11 @@ export const CreditsPage: React.FC = () => {
 
     try {
       setSubmitting(true);
-      const res = await apiClient.post<ApiResponse<ICredit>>('/credits/give', {
+      const res = await apiClient.post<ApiResponse<ICredit>>('/credits', {
         partyName: newCustName.trim(),
         phone: newCustPhone.trim() || undefined,
-        amount: numAmount > 0 ? numAmount : 0.01,
-        remarks: numAmount > 0 ? 'Opening credit balance' : 'Customer account created',
+        amount: numAmount > 0 ? numAmount : 0,
+        remarks: numAmount > 0 ? 'Opening credit balance' : undefined,
       });
 
       showToast(`Customer "${newCustName}" added!`, 'success');
