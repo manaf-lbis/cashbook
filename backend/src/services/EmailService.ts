@@ -6,7 +6,8 @@ export class EmailService {
 
   private static getClient(): Resend {
     if (!this.resendClient) {
-      this.resendClient = new Resend(ENV.RESEND_API_KEY);
+      const apiKey = (ENV.RESEND_API_KEY || '').trim();
+      this.resendClient = new Resend(apiKey);
     }
     return this.resendClient;
   }

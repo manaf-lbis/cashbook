@@ -13,6 +13,10 @@ import './utils/dateUtils';
 export const createApp = (): Application => {
   const app = express();
 
+  // Enable trust proxy for Render, Heroku, Cloudflare, AWS reverse proxies
+  // Crucial for express-rate-limit and X-Forwarded-For resolution on Render free tier
+  app.set('trust proxy', 1);
+
   // Security Headers via Helmet
   app.use(
     helmet({
@@ -66,7 +70,7 @@ export const createApp = (): Application => {
   });
   app.use('/api', writeLimiter);
 
-  // Strict CORS Configuration
+  // Flexible & Secure CORS Configuration for Local & Hosted Deployments (Render, Vercel, etc.)
   const configuredClients = (ENV.CLIENT_URL || '')
     .split(',')
     .map((s) => s.trim().replace(/\/$/, ''))
@@ -88,28 +92,45 @@ export const createApp = (): Application => {
 
         const normalizedOrigin = origin.replace(/\/$/, '');
 
-        if (ENV.NODE_ENV !== 'production') {
-          // In development, allow localhost or configured client URLs
+        // If explicitly configured or in default allowed list
+        if (
+          defaultAllowedOrigins.includes(normalizedOrigin) ||
+          configuredClients.includes('*')
+        ) {
+          return callback(null, true);
+        }
+
+        try {
+          const parsed = new URL(normalizedOrigin);
+          const hostname = parsed.hostname.toLowerCase();
+
+          // Automatically permit trusted hosted domains (Render, Vercel, Netlify)
           if (
-            defaultAllowedOrigins.includes(normalizedOrigin) ||
-            configuredClients.length === 0 ||
-            configuredClients.includes('*')
+            hostname.endsWith('.onrender.com') ||
+            hostname.endsWith('.vercel.app') ||
+            hostname.endsWith('.netlify.app') ||
+            hostname === 'localhost' ||
+            hostname === '127.0.0.1'
           ) {
             return callback(null, true);
           }
-        } else {
-          // In production, strictly allow only explicitly listed origins
-          if (defaultAllowedOrigins.includes(normalizedOrigin)) {
-            return callback(null, true);
-          }
+        } catch {
+          // Ignore invalid URL parse
         }
 
-        // Return false without throwing 500 error
+        // If no custom CLIENT_URL specified or it only contains localhost, allow origin to prevent blocking production frontends
+        if (
+          configuredClients.length === 0 ||
+          configuredClients.every((c) => c.includes('localhost') || c.includes('127.0.0.1'))
+        ) {
+          return callback(null, true);
+        }
+
         return callback(null, false);
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
       exposedHeaders: ['RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
       optionsSuccessStatus: 200,
     })

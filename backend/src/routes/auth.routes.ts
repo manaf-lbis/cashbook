@@ -10,7 +10,7 @@ const router = Router();
 // Rate limiter for login & OTP generation to prevent spam and brute-force attacks
 const loginRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // Limit each IP to 20 attempts per windowMs
+  max: 30, // Limit each IP to 30 attempts per windowMs
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -21,7 +21,7 @@ const loginRateLimiter = rateLimit({
 
 const otpRateLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 10, // Limit each IP to 10 OTP requests per 5 minutes
+  max: 20, // Limit each IP to 20 OTP requests per 5 minutes
   standardHeaders: true,
   legacyHeaders: false,
   message: {

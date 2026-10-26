@@ -59,11 +59,15 @@ export const LoginPage: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      await sendOtp(cleanEmail);
+      const res = await sendOtp(cleanEmail);
       setStep('OTP');
       setCountdown(60);
       setOtpDigits(['', '', '', '', '', '']);
-      showToast('Verification code sent to your email', 'success');
+      if (res && res.emailDelivery === false) {
+        showToast(res.message || 'Verification code logged to server console', 'info');
+      } else {
+        showToast('Verification code sent to your email', 'success');
+      }
 
       setTimeout(() => {
         inputRefs.current[0]?.focus();

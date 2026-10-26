@@ -23,25 +23,47 @@ export class AuthService {
    */
   static async ensureDefaultAdmin(): Promise<void> {
     try {
-      const existing = await UserModel.findOne({
-        $or: [{ username: ENV.ADMIN_USERNAME }, { email: ENV.ADMIN_USERNAME }],
+      const targetEmail = (ENV.ADMIN_USERNAME || 'loginktkd@gmail.com').toLowerCase().trim();
+
+      // Look for any existing admin or target user (including legacy username '7994414155')
+      let admin = await UserModel.findOne({
+        $or: [
+          { email: targetEmail },
+          { username: targetEmail },
+          { username: '7994414155' },
+          { role: 'ADMIN' },
+        ],
       });
-      if (!existing) {
-        console.log(`[Security] Initializing default administrator account (${ENV.ADMIN_USERNAME})...`);
-        const admin = new UserModel({
-          username: ENV.ADMIN_USERNAME,
-          email: ENV.ADMIN_USERNAME,
+
+      if (!admin) {
+        console.log(`[Security] Initializing default administrator account (${targetEmail})...`);
+        admin = new UserModel({
+          username: targetEmail,
+          email: targetEmail,
           password: ENV.ADMIN_PASSWORD,
           name: 'Store Administrator',
           role: 'ADMIN',
           isActive: true,
         });
         await admin.save();
-        console.log(`[Security] Default administrator account ready.`);
+        console.log(`[Security] Default administrator account ready: ${targetEmail}`);
       } else {
-        if (!existing.isActive) {
-          existing.isActive = true;
-          await existing.save();
+        let needsSave = false;
+        if (!admin.email || admin.email.toLowerCase() !== targetEmail) {
+          admin.email = targetEmail;
+          needsSave = true;
+        }
+        if (admin.username === '7994414155' || !admin.username) {
+          admin.username = targetEmail;
+          needsSave = true;
+        }
+        if (!admin.isActive) {
+          admin.isActive = true;
+          needsSave = true;
+        }
+        if (needsSave) {
+          await admin.save();
+          console.log(`[Security] Updated administrator account to ${targetEmail} (Active: true)`);
         }
       }
     } catch (err) {
@@ -55,11 +77,35 @@ export class AuthService {
    */
   static async sendLoginOtp(email: string): Promise<{ success: boolean; message: string; emailDelivery: boolean; error?: string }> {
     const formattedEmail = email.toLowerCase().trim();
+    const adminEmail = (ENV.ADMIN_USERNAME || 'loginktkd@gmail.com').toLowerCase().trim();
 
     // STRICT ACCESS CONTROL: Only allow registered users in the database
-    const user = await UserModel.findOne({
+    let user = await UserModel.findOne({
       $or: [{ email: formattedEmail }, { username: formattedEmail }],
     });
+
+    // Auto-link/ensure the administrator account if logging in with the designated admin email
+    if (!user && (formattedEmail === adminEmail || formattedEmail === 'loginktkd@gmail.com')) {
+      user = await UserModel.findOne({
+        $or: [{ username: '7994414155' }, { role: 'ADMIN' }],
+      });
+
+      if (user) {
+        user.email = formattedEmail;
+        user.username = formattedEmail;
+        user.isActive = true;
+        await user.save();
+      } else {
+        user = await UserModel.create({
+          username: formattedEmail,
+          email: formattedEmail,
+          password: ENV.ADMIN_PASSWORD,
+          name: 'Store Administrator',
+          role: 'ADMIN',
+          isActive: true,
+        });
+      }
+    }
 
     if (!user) {
       throw ApiError.unauthorized(
@@ -108,9 +154,20 @@ export class AuthService {
     const cleanOtp = otp.trim();
 
     // Verify user exists and is active
-    const user = await UserModel.findOne({
+    let user = await UserModel.findOne({
       $or: [{ email: formattedEmail }, { username: formattedEmail }],
     });
+
+    if (!user && (formattedEmail === (ENV.ADMIN_USERNAME || '').toLowerCase() || formattedEmail === 'loginktkd@gmail.com')) {
+      user = await UserModel.findOne({
+        $or: [{ username: '7994414155' }, { role: 'ADMIN' }],
+      });
+      if (user) {
+        user.email = formattedEmail;
+        user.username = formattedEmail;
+        await user.save();
+      }
+    }
 
     if (!user) {
       throw ApiError.unauthorized('Access denied: You are not a registered user.');
