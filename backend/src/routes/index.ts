@@ -8,6 +8,7 @@ import creditCardRoutes from './creditCard.routes';
 import dashboardRoutes from './dashboard.routes';
 import daybookRoutes from './daybook.routes';
 import dailyClosingRoutes from './dailyClosing.routes';
+import reportRoutes from './report.routes';
 import { requireAuth } from '../middlewares/authMiddleware';
 
 const apiRouter = Router();
@@ -24,6 +25,7 @@ apiRouter.use('/credit-cards', requireAuth, creditCardRoutes);
 apiRouter.use('/dashboard', requireAuth, dashboardRoutes);
 apiRouter.use('/daybook', requireAuth, daybookRoutes);
 apiRouter.use('/daily-closing', requireAuth, dailyClosingRoutes);
+apiRouter.use('/reports', requireAuth, reportRoutes);
 
 export default apiRouter;
 

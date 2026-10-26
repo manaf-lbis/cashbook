@@ -381,10 +381,132 @@ export class DailyClosingService {
       savedMap.set(c.date, c);
     }
 
-    // 4. Generate dates in chronological order (oldest to newest)
+    // 4. Generate dates in chronological order (oldest to newest) with safe limits
+    const safeDaysCount = Math.min(Math.max(1, Number(daysCount) || 14), 90);
     const dates: string[] = [];
-    for (let i = daysCount - 1; i >= 0; i--) {
+    for (let i = safeDaysCount - 1; i >= 0; i--) {
       dates.push(dayjs().tz(TIMEZONE).subtract(i, 'day').format('YYYY-MM-DD'));
+    }
+
+    const minDateStr = dates[0];
+    const maxDateStr = dates[dates.length - 1];
+    const globalStart = getStartOfDayIST(minDateStr);
+    const globalEnd = getEndOfDayIST(maxDateStr);
+
+    // BATCH AGGREGATION: Pre-aggregate daybook, expenses, credit cards, and customer credits
+    // across the whole timeline date range in 4 parallel queries instead of 4 * N queries in a loop!
+    const [dayBookAgg, expenseAgg, cardAgg, creditAgg] = await Promise.all([
+      // 1. Day book total sales and count by date string
+      DayBookEntryModel.aggregate([
+        {
+          $match: {
+            date: { $gte: globalStart, $lte: globalEnd },
+            isDeleted: { $ne: true },
+          },
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$date', timezone: '+05:30' } },
+            totalSales: { $sum: '$amount' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      // 2. Expenses total by date string
+      ExpenseModel.aggregate([
+        {
+          $match: {
+            date: { $gte: globalStart, $lte: globalEnd },
+            isDeleted: { $ne: true },
+          },
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$date', timezone: '+05:30' } },
+            totalExpense: { $sum: '$amount' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      // 3. Credit card transactions by date string and type
+      CreditCardTransactionModel.aggregate([
+        {
+          $match: {
+            date: { $gte: globalStart, $lte: globalEnd },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              date: { $dateToString: { format: '%Y-%m-%d', date: '$date', timezone: '+05:30' } },
+              type: '$type',
+            },
+            total: { $sum: '$amount' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      // 4. Customer book credits/repayments by date string and type
+      CreditModel.aggregate([
+        { $unwind: '$entries' },
+        {
+          $match: {
+            'entries.date': { $gte: globalStart, $lte: globalEnd },
+            'entries.isDeleted': { $ne: true },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              date: { $dateToString: { format: '%Y-%m-%d', date: '$entries.date', timezone: '+05:30' } },
+              type: '$entries.type',
+            },
+            total: { $sum: '$entries.amount' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+    ]);
+
+    // Build lookup maps for O(1) in-memory resolution
+    const dayBookMap = new Map<string, { totalSales: number; count: number }>();
+    for (const r of dayBookAgg) {
+      if (r._id) dayBookMap.set(r._id, { totalSales: r.totalSales, count: r.count });
+    }
+
+    const expenseMap = new Map<string, { totalExpense: number; count: number }>();
+    for (const r of expenseAgg) {
+      if (r._id) expenseMap.set(r._id, { totalExpense: r.totalExpense, count: r.count });
+    }
+
+    const cardMap = new Map<string, { drawn: number; payment: number; count: number }>();
+    for (const r of cardAgg) {
+      const d = r._id?.date;
+      const type = r._id?.type;
+      if (!d) continue;
+      if (!cardMap.has(d)) cardMap.set(d, { drawn: 0, payment: 0, count: 0 });
+      const item = cardMap.get(d)!;
+      if (type === CreditCardTransactionType.PURCHASE || type === CreditCardTransactionType.CASH_DRAWN) {
+        item.drawn += r.total;
+      } else if (type === CreditCardTransactionType.PAYMENT) {
+        item.payment += r.total;
+      }
+      item.count += r.count;
+    }
+
+    const creditMap = new Map<string, { repayments: number; creditGiven: number; count: number }>();
+    for (const r of creditAgg) {
+      const d = r._id?.date;
+      const type = r._id?.type;
+      if (!d) continue;
+      if (!creditMap.has(d)) creditMap.set(d, { repayments: 0, creditGiven: 0, count: 0 });
+      const item = creditMap.get(d)!;
+      if (type === CreditTransactionType.REPAYMENT) {
+        item.repayments += r.total;
+      } else if (type === CreditTransactionType.GIVEN) {
+        item.creditGiven += r.total;
+      }
+      item.count += r.count;
     }
 
     // 5. Baseline opening balance before dates[0]
@@ -447,44 +569,24 @@ export class DailyClosingService {
         // The actual counted closing balance rolls into the next day's opening
         runningOpening = saved.actualClosingBalance;
       } else {
-        // Not saved yet: check ledger activity on that day
-        const startOfDay = getStartOfDayIST(dateStr);
-        const endOfDay = getEndOfDayIST(dateStr);
-
-        const [dayBookEntries, credits, expenses, cardTxs] = await Promise.all([
-          DayBookEntryModel.find({ date: { $gte: startOfDay, $lte: endOfDay }, isDeleted: { $ne: true } }),
-          CreditModel.find({ 'entries.date': { $gte: startOfDay, $lte: endOfDay } }),
-          ExpenseModel.find({ date: { $gte: startOfDay, $lte: endOfDay }, isDeleted: { $ne: true } }),
-          CreditCardTransactionModel.find({ date: { $gte: startOfDay, $lte: endOfDay } }),
-        ]);
-
-        const dayBookSales = dayBookEntries.reduce((s, e) => s + e.amount, 0);
-        const expenseTotal = expenses.reduce((s, e) => s + e.amount, 0);
-
-        let customerRepayments = 0;
-        let customerCreditGiven = 0;
-        for (const c of credits) {
-          for (const e of c.entries) {
-            if ((e as any).isDeleted) continue;
-            const eD = new Date(e.date);
-            if (eD >= startOfDay && eD <= endOfDay) {
-              if (e.type === CreditTransactionType.REPAYMENT) customerRepayments += e.amount;
-              else if (e.type === CreditTransactionType.GIVEN) customerCreditGiven += e.amount;
-            }
-          }
-        }
+        // Fast O(1) in-memory resolution from pre-aggregated queries (zero extra queries!)
+        const dayBookSales = dayBookMap.get(dateStr)?.totalSales || 0;
+        const expenseTotal = expenseMap.get(dateStr)?.totalExpense || 0;
+        const cData = creditMap.get(dateStr) || { repayments: 0, creditGiven: 0, count: 0 };
+        const customerRepayments = cData.repayments;
+        const customerCreditGiven = cData.creditGiven;
         const customerNet = customerRepayments - customerCreditGiven;
 
-        let cardNet = 0;
-        for (const t of cardTxs) {
-          if (t.type === CreditCardTransactionType.PURCHASE || t.type === CreditCardTransactionType.CASH_DRAWN) {
-            cardNet += t.amount;
-          } else if (t.type === CreditCardTransactionType.PAYMENT) {
-            cardNet -= t.amount;
-          }
-        }
+        const cardData = cardMap.get(dateStr) || { drawn: 0, payment: 0, count: 0 };
+        const cardNet = cardData.drawn - cardData.payment;
 
-        const hasActivity = dayBookSales > 0 || expenseTotal > 0 || customerRepayments > 0 || customerCreditGiven > 0 || cardTxs.length > 0;
+        const hasActivity =
+          dayBookSales > 0 ||
+          expenseTotal > 0 ||
+          customerRepayments > 0 ||
+          customerCreditGiven > 0 ||
+          cardData.count > 0;
+
         const expected = runningOpening + dayBookSales + customerNet - expenseTotal + cardNet;
 
         let status: 'OPENING' | 'NOT_CLOSED' | 'OPENING_ONLY';

@@ -34,6 +34,8 @@ export const createApp = (): Application => {
       crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
       hidePoweredBy: true,
       noSniff: true,
+      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+      dnsPrefetchControl: { allow: false },
     })
   );
 
@@ -65,32 +67,51 @@ export const createApp = (): Application => {
   app.use('/api', writeLimiter);
 
   // Strict CORS Configuration
+  const configuredClients = (ENV.CLIENT_URL || '')
+    .split(',')
+    .map((s) => s.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+
+  const defaultAllowedOrigins = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    ...configuredClients,
+  ];
+
   app.use(
     cors({
       origin: (origin, callback) => {
-        // Allow requests with no origin (mobile apps, server health checks)
+        // Allow requests with no origin (e.g. mobile apps, curl, server-to-server health checks)
         if (!origin) return callback(null, true);
 
-        const configuredClient = ENV.CLIENT_URL ? ENV.CLIENT_URL.replace(/\/$/, '') : '';
-        const allowed = [
-          configuredClient,
-          'http://localhost:5173',
-          'http://127.0.0.1:5173',
-          'http://localhost:3000',
-        ].filter(Boolean);
+        const normalizedOrigin = origin.replace(/\/$/, '');
 
-        if (
-          ENV.NODE_ENV !== 'production'
-            ? allowed.includes(origin.replace(/\/$/, '')) || !configuredClient || configuredClient === '*'
-            : allowed.includes(origin.replace(/\/$/, ''))
-        ) {
-          return callback(null, true);
+        if (ENV.NODE_ENV !== 'production') {
+          // In development, allow localhost or configured client URLs
+          if (
+            defaultAllowedOrigins.includes(normalizedOrigin) ||
+            configuredClients.length === 0 ||
+            configuredClients.includes('*')
+          ) {
+            return callback(null, true);
+          }
+        } else {
+          // In production, strictly allow only explicitly listed origins
+          if (defaultAllowedOrigins.includes(normalizedOrigin)) {
+            return callback(null, true);
+          }
         }
-        return callback(new Error('Blocked by CORS policy'));
+
+        // Return false without throwing 500 error
+        return callback(null, false);
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      exposedHeaders: ['RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
+      optionsSuccessStatus: 200,
     })
   );
 

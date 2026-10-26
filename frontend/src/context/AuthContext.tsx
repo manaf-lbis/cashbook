@@ -7,6 +7,8 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  sendOtp: (email: string) => Promise<{ success: boolean; message: string; emailDelivery: boolean; error?: string }>;
+  verifyOtp: (email: string, otp: string) => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
 }
@@ -61,6 +63,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
   }, []);
 
+  const sendOtp = async (email: string) => {
+    const response = await apiClient.post<ApiResponse<any>>('/auth/send-otp', {
+      email: email.trim().toLowerCase(),
+    });
+    return response.data.data;
+  };
+
+  const verifyOtp = async (email: string, otp: string): Promise<void> => {
+    const response = await apiClient.post<ApiResponse<ILoginResponse>>('/auth/verify-otp', {
+      email: email.trim().toLowerCase(),
+      otp: otp.trim(),
+    });
+
+    if (response.data && response.data.data) {
+      const { token: receivedToken, user: receivedUser } = response.data.data;
+      localStorage.setItem('cashbook_auth_token', receivedToken);
+      localStorage.setItem('cashbook_user', JSON.stringify(receivedUser));
+      setToken(receivedToken);
+      setUser(receivedUser);
+    }
+  };
+
   const login = async (username: string, password: string): Promise<void> => {
     const response = await apiClient.post<ApiResponse<ILoginResponse>>('/auth/login', {
       username: username.trim(),
@@ -90,6 +114,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         isAuthenticated: !!token && !!user,
         isLoading,
+        sendOtp,
+        verifyOtp,
         login,
         logout,
       }}

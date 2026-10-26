@@ -4,6 +4,36 @@ import { ApiResponse } from '../utils/ApiResponse';
 import { AuditLogger } from '../utils/AuditLogger';
 
 export class AuthController {
+  static async sendOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { email } = req.body;
+      const result = await AuthService.sendLoginOtp(email);
+      AuditLogger.log(req, 'AUTH_OTP_REQUEST', 'SUCCESS', { email });
+      ApiResponse.success(res, result, result.message);
+    } catch (error: any) {
+      AuditLogger.log(req, 'AUTH_OTP_REQUEST', 'FAILURE', {
+        email: req.body?.email,
+        reason: error?.message || 'OTP generation failure',
+      });
+      next(error);
+    }
+  }
+
+  static async verifyOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { email, otp } = req.body;
+      const authData = await AuthService.verifyLoginOtp(email, otp);
+      AuditLogger.log(req, 'AUTH_OTP_LOGIN', 'SUCCESS', { email, userId: authData.user.id });
+      ApiResponse.success(res, authData, 'Authentication successful! Welcome to Cashbook.');
+    } catch (error: any) {
+      AuditLogger.log(req, 'AUTH_OTP_LOGIN', 'FAILURE', {
+        email: req.body?.email,
+        reason: error?.message || 'OTP verification failure',
+      });
+      next(error);
+    }
+  }
+
   static async login(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { username, password } = req.body;

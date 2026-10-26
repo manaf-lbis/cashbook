@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Scale,
   LogOut,
+  BarChart3,
 } from 'lucide-react';
 import { useAccounts } from '../../context/AccountContext';
 import { useAuth } from '../../context/AuthContext';
@@ -35,6 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const navItems = [
     { label: 'Dashboard', path: '/', icon: LayoutDashboard },
     { label: 'Day Book', path: '/daybook', icon: CalendarDays },
+    { label: 'Sales Reports', path: '/reports', icon: BarChart3 },
     { label: 'Day Open & Close', path: '/daily-closing', icon: Scale },
     { label: 'Customers', path: '/credits', icon: Users },
     { label: 'Expenses', path: '/expenses', icon: Receipt },

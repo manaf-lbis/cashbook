@@ -33,7 +33,9 @@ export const AppLayout: React.FC = () => {
           <div className="w-5" />
         </div>
 
-        <Outlet />
+        <main className="flex-1 min-h-0 w-full h-full flex flex-col overflow-hidden">
+          <Outlet />
+        </main>
       </div>
     </div>
   );

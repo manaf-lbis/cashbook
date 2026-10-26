@@ -45,6 +45,31 @@ export class DayBookRepository extends BaseRepository<IDayBookEntry> {
     };
   }
 
+  async getYearAggregates(year: number): Promise<Record<string, { totalSales: number; totalBills: number }>> {
+    const prefix = `${year}-`;
+    const rows = await this._model.aggregate([
+      { $match: { monthKey: { $regex: `^${prefix}` }, isDeleted: { $ne: true } } },
+      {
+        $group: {
+          _id: '$monthKey',
+          totalSales: { $sum: '$amount' },
+          totalBills: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const map: Record<string, { totalSales: number; totalBills: number }> = {};
+    for (const row of rows) {
+      if (row._id) {
+        map[row._id] = {
+          totalSales: row.totalSales,
+          totalBills: row.totalBills,
+        };
+      }
+    }
+    return map;
+  }
+
   async getBillerMonthSums(monthKey: string): Promise<Record<string, { totalSales: number; totalBills: number }>> {
     const rows = await this._model.aggregate([
       { $match: { monthKey, isDeleted: { $ne: true } } },

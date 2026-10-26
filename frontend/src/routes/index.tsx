@@ -14,6 +14,7 @@ import { PayablesPage } from '../features/payables/PayablesPage';
 import { CreditCardsPage } from '../features/credit-cards/CreditCardsPage';
 import { DayBookPage } from '../features/daybook/DayBookPage';
 import { DailyClosingPage } from '../features/daily-closing/DailyClosingPage';
+import { ReportsPage } from '../features/reports/ReportsPage';
 
 const PublicOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -54,6 +55,10 @@ export const router = createBrowserRouter([
       {
         path: 'daybook',
         element: <DayBookPage />,
+      },
+      {
+        path: 'reports',
+        element: <ReportsPage />,
       },
       {
         path: 'daily-closing',

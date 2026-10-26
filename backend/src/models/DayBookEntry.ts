@@ -70,5 +70,7 @@ const DayBookEntrySchema = new Schema<IDayBookEntry>(
 
 DayBookEntrySchema.index({ monthKey: 1, billerId: 1 });
 DayBookEntrySchema.index({ date: -1 });
+DayBookEntrySchema.index({ date: 1, isDeleted: 1 });
+DayBookEntrySchema.index({ billerId: 1, date: -1, isDeleted: 1 });
 
 export const DayBookEntryModel = mongoose.model<IDayBookEntry>('DayBookEntry', DayBookEntrySchema);

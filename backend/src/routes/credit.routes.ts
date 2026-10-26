@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { CreditController } from '../controllers/CreditController';
 import { validateRequest } from '../middlewares/validateRequest';
 import { validateObjectIdParams } from '../middlewares/validateObjectId';
+import { requireRole } from '../middlewares/roleMiddleware';
 import { CreateCustomerSchema, GiveCreditSchema, RepayCreditSchema, UpdateCreditEntrySchema } from '../validators/schemas';
 
 const router = Router();
@@ -14,7 +15,7 @@ router.post('/customer', validateRequest(CreateCustomerSchema), controller.creat
 router.post('/give', validateRequest(GiveCreditSchema), controller.giveCredit);
 router.post('/:id/repay', validateObjectIdParams(['id']), validateRequest(RepayCreditSchema), controller.collectRepayment);
 router.put('/:id/entries/:entryId', validateObjectIdParams(['id', 'entryId']), validateRequest(UpdateCreditEntrySchema), controller.updateEntry);
-router.delete('/:id/entries/:entryId', validateObjectIdParams(['id', 'entryId']), controller.deleteEntry);
+router.delete('/:id/entries/:entryId', validateObjectIdParams(['id', 'entryId']), requireRole('ADMIN'), controller.deleteEntry);
 
 export default router;
 

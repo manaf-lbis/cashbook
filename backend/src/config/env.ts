@@ -10,7 +10,9 @@ export const ENV = {
   CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:5173',
   JWT_SECRET: process.env.JWT_SECRET || 'cashbook_super_secure_jwt_secret_key_2026_!',
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
-  ADMIN_USERNAME: process.env.ADMIN_USERNAME || '7994414155',
+  ADMIN_USERNAME: process.env.ADMIN_USERNAME || 'loginktkd@gmail.com',
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'Login@8520',
+  RESEND_API_KEY: process.env.RESEND_API_KEY || '',
+  EMAIL_FROM: process.env.EMAIL_FROM || 'Cashbook Pro <onboarding@resend.dev>',
 };
 

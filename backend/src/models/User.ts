@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 
 export interface IUser extends Document {
   username: string;
+  email?: string;
   password?: string;
   name: string;
   role: string;
@@ -21,9 +22,16 @@ const UserSchema = new Schema<IUser>(
       trim: true,
       index: true,
     },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      sparse: true,
+      index: true,
+    },
     password: {
       type: String,
-      required: true,
+      required: false,
       select: false, // Ensure password hash is not leaked in queries by default
     },
     name: {

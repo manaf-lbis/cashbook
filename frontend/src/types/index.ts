@@ -451,14 +451,80 @@ export interface ITimelineResponse {
 export interface IUser {
   id: string;
   username: string;
+  email?: string;
   name: string;
   role: string;
+}
+
+export interface ISendOtpResponse {
+  success: boolean;
+  message: string;
+  emailDelivery: boolean;
+  error?: string;
 }
 
 export interface ILoginResponse {
   token: string;
   user: IUser;
 }
+
+export interface ISalesReportFilters {
+  startDate: string;
+  endDate: string;
+  billerId: string;
+  paymentMode: string;
+  selectedBillerName: string;
+}
+
+export interface ISalesReportSummary {
+  totalSales: number;
+  totalBills: number;
+  averageBill: number;
+  dailyAverageSales: number;
+  highestDaySale: number;
+  highestDayDate: string;
+  activeSellingDays: number;
+  totalCalendarDays: number;
+  topSalesperson: ISalespersonRanking | null;
+}
+
+export interface ISalespersonRanking {
+  billerId: string;
+  billerName: string;
+  billerRole: string;
+  totalSales: number;
+  totalBills: number;
+  averageBill: number;
+  maxSale: number;
+  minSale: number;
+  salesSharePercentage: number;
+}
+
+export interface IDayWiseSalesPoint {
+  date: string;
+  dayLabel: string;
+  weekday: string;
+  formattedDate: string;
+  totalSales: number;
+  totalBills: number;
+  averageBill: number;
+  highestSale: number;
+  lowestSale: number;
+  cashSales: number;
+  bankSales: number;
+  upiSales: number;
+}
+
+export interface ISalesReportData {
+  filters: ISalesReportFilters;
+  summary: ISalesReportSummary;
+  availableBillers: IBiller[];
+  salespersonRankings: ISalespersonRanking[];
+  paymentModeBreakdown: Record<string, { totalAmount: number; count: number; percentage: number }>;
+  dayWiseSeries: IDayWiseSalesPoint[];
+  recentEntries: any[];
+}
+
 
 
 

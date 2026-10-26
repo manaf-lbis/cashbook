@@ -32,6 +32,7 @@ const ExpenseSchema = new Schema<IExpense>(
 );
 
 ExpenseSchema.index({ date: -1 });
+ExpenseSchema.index({ date: 1, isDeleted: 1 });
 ExpenseSchema.index({ category: 1 });
 ExpenseSchema.index({ accountId: 1 });
 

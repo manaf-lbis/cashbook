@@ -29,6 +29,7 @@ const CreditCardTransactionSchema = new Schema<ICreditCardTransaction>(
 );
 
 CreditCardTransactionSchema.index({ cardId: 1, date: -1 });
+CreditCardTransactionSchema.index({ date: -1 });
 
 export const CreditCardTransactionModel = mongoose.model<ICreditCardTransaction>(
   'CreditCardTransaction',

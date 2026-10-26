@@ -33,11 +33,14 @@ export class DayBookService {
     const currentMonth = getCurrentMonthIST();
     const months = [];
 
+    // Single aggregation query for all 12 months of the year (replaces 12 sequential queries)
+    const yearStatsMap = await this.daybookRepo.getYearAggregates(targetYear);
+
     for (let m = 1; m <= 12; m++) {
       const monthKey = `${targetYear}-${String(m).padStart(2, '0')}`;
       const dateObj = dayjs.tz(`${monthKey}-01`, TIMEZONE);
       const status = this.getMonthStatus(monthKey);
-      const aggregates = status !== 'LOCKED' ? await this.daybookRepo.getMonthAggregates(monthKey) : { totalSales: 0, totalBills: 0 };
+      const aggregates = status !== 'LOCKED' ? (yearStatsMap[monthKey] || { totalSales: 0, totalBills: 0 }) : { totalSales: 0, totalBills: 0 };
 
       months.push({
         monthKey,

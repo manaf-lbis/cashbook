@@ -58,5 +58,6 @@ const CreditSchema = new Schema<ICredit>(
 CreditSchema.index({ partyName: 1 });
 CreditSchema.index({ status: 1 });
 CreditSchema.index({ balanceDue: -1 });
+CreditSchema.index({ 'entries.date': 1 });
 
 export const CreditModel = mongoose.model<ICredit>('Credit', CreditSchema);

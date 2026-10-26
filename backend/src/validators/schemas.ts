@@ -185,6 +185,15 @@ export const LoginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
+export const SendOtpSchema = z.object({
+  email: z.string().email('Please enter a valid email address').trim().toLowerCase(),
+});
+
+export const VerifyOtpSchema = z.object({
+  email: z.string().email('Please enter a valid email address').trim().toLowerCase(),
+  otp: z.string().length(6, 'OTP must be exactly 6 digits').regex(/^\d{6}$/, 'OTP must contain 6 numbers only'),
+});
+
 export const CreateCategorySchema = z.object({
   name: z.string().min(1, 'Category name is required').trim(),
   description: z.string().trim().optional(),
@@ -201,6 +210,14 @@ export const UpdateCardSchema = z.object({
   colorTheme: z.string().optional(),
   isActive: z.boolean().optional(),
 });
+
+export const SalesReportQuerySchema = z.object({
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid startDate format (YYYY-MM-DD)').optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid endDate format (YYYY-MM-DD)').optional(),
+  billerId: z.string().trim().optional(),
+  paymentMode: z.enum(['ALL', 'CASH', 'BANK', 'UPI']).optional(),
+});
+
 
 
 

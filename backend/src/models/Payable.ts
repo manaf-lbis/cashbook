@@ -58,5 +58,6 @@ const PayableSchema = new Schema<IPayable>(
 PayableSchema.index({ partyName: 1 });
 PayableSchema.index({ status: 1 });
 PayableSchema.index({ balancePending: -1 });
+PayableSchema.index({ 'entries.date': 1 });
 
 export const PayableModel = mongoose.model<IPayable>('Payable', PayableSchema);
