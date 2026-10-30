@@ -16,7 +16,7 @@ export class CreditRepository extends BaseRepository<ICredit> {
 
   async getTotalOutstandingReceivables(): Promise<number> {
     const res = await this._model.aggregate([
-      { $match: { status: 'ACTIVE' } },
+      { $match: { status: 'ACTIVE', balanceDue: { $gt: 0 } } },
       { $group: { _id: null, total: { $sum: '$balanceDue' } } },
     ]);
     return res.length > 0 ? res[0].total : 0;

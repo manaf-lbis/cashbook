@@ -16,7 +16,7 @@ export class PayableRepository extends BaseRepository<IPayable> {
 
   async getTotalOutstandingPayables(): Promise<number> {
     const res = await this._model.aggregate([
-      { $match: { status: 'ACTIVE' } },
+      { $match: { status: 'ACTIVE', balancePending: { $gt: 0 } } },
       { $group: { _id: null, total: { $sum: '$balancePending' } } },
     ]);
     return res.length > 0 ? res[0].total : 0;

@@ -44,6 +44,8 @@ export const CreditsPage: React.FC = () => {
 
   // Currently selected customer
   const [selectedCredit, setSelectedCredit] = useState<ICredit | null>(null);
+  const selectedCreditIdRef = React.useRef<string | null>(null);
+  selectedCreditIdRef.current = selectedCredit?._id || null;
 
   // Modals
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
@@ -68,11 +70,19 @@ export const CreditsPage: React.FC = () => {
       const res = await apiClient.get<ApiResponse<ICredit[]>>('/credits');
       if (res.data.success) {
         setCredits(res.data.data);
-        if (res.data.data.length > 0 && !selectedCredit) {
+        const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
+        const currentId = selectedCreditIdRef.current;
+        if (currentId) {
+          const updated = res.data.data.find((c) => c._id === currentId);
+          if (updated) {
+            setSelectedCredit(updated);
+          } else if (isDesktop && res.data.data.length > 0) {
+            setSelectedCredit(res.data.data[0]);
+          } else {
+            setSelectedCredit(null);
+          }
+        } else if (isDesktop && res.data.data.length > 0) {
           setSelectedCredit(res.data.data[0]);
-        } else if (selectedCredit) {
-          const updated = res.data.data.find((c) => c._id === selectedCredit._id);
-          if (updated) setSelectedCredit(updated);
         }
       }
     } catch (err: any) {
@@ -80,7 +90,7 @@ export const CreditsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [showToast, selectedCredit?._id]);
+  }, [showToast]);
 
   useEffect(() => {
     fetchCredits();
@@ -107,15 +117,38 @@ export const CreditsPage: React.FC = () => {
     try {
       await apiClient.delete(`/credits/${selectedCredit._id}/entries/${entry._id}`);
       showToast('Credit entry marked as deleted', 'success');
-      fetchCredits();
-      refreshAccounts();
+      await refreshAccounts();
+      await fetchCredits();
     } catch (err: any) {
       showToast(err.message || 'Failed to delete credit entry', 'error');
     }
   };
 
   // Totals
-  const totalYouWillGet = credits.reduce((sum, c) => sum + (c.status === 'ACTIVE' ? c.balanceDue : 0), 0);
+  const totalYouWillGet = credits.reduce((sum, c) => sum + (c.balanceDue > 0 ? c.balanceDue : 0), 0);
+  const totalYouWillGive = credits.reduce((sum, c) => sum + (c.balanceDue < 0 ? Math.abs(c.balanceDue) : 0), 0);
+
+  // Pre-calculate running balances for selectedCredit's entries
+  const runningBalances = React.useMemo(() => {
+    if (!selectedCredit || !selectedCredit.entries) return new Map<string, number>();
+    const map = new Map<string, number>();
+    // Sort active (non-deleted) entries chronologically (oldest first)
+    const validEntries = [...selectedCredit.entries]
+      .filter((e) => !e.isDeleted)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    let bal = 0;
+    for (const e of validEntries) {
+      if (e.type === CreditTransactionType.GIVEN) {
+        bal += e.amount;
+      } else {
+        bal -= e.amount;
+      }
+      const idKey = (e as any)._id?.toString() || (e as any).id;
+      if (idKey) map.set(idKey, bal);
+    }
+    return map;
+  }, [selectedCredit]);
 
   // Filter & Sort
   const filteredCredits = credits
@@ -273,7 +306,9 @@ export const CreditsPage: React.FC = () => {
         <div className="px-3.5 sm:px-5 py-2.5 sm:py-3.5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between text-xs sm:text-sm gap-2">
           <div>
             <span className="text-slate-500 font-medium">You'll Give:</span>{' '}
-            <span className="font-mono font-bold text-emerald-600 text-sm sm:text-base">₹0 ↗</span>
+            <span className="font-mono font-bold text-emerald-600 text-sm sm:text-base">
+              ₹{totalYouWillGive.toLocaleString('en-IN')} ↗
+            </span>
           </div>
 
           <div>
@@ -285,7 +320,7 @@ export const CreditsPage: React.FC = () => {
 
           <button
             onClick={() => window.print()}
-            className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50/80 hover:bg-blue-100 px-2.5 sm:px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap"
+            className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50/80 hover:bg-blue-100 px-2.5 sm:px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
           >
             <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> View Report
           </button>
@@ -386,13 +421,17 @@ export const CreditsPage: React.FC = () => {
                   <div className="text-right">
                     <p
                       className={`text-sm font-mono font-bold ${
-                        c.balanceDue > 0 ? 'text-rose-600' : 'text-slate-400'
+                        c.balanceDue > 0
+                          ? 'text-rose-600'
+                          : c.balanceDue < 0
+                          ? 'text-emerald-600'
+                          : 'text-slate-400'
                       }`}
                     >
-                      ₹{c.balanceDue.toLocaleString('en-IN')}
+                      ₹{Math.abs(c.balanceDue).toLocaleString('en-IN')}
                     </p>
                     <span className="text-[10px] uppercase font-bold text-slate-400">
-                      {c.balanceDue > 0 ? "YOU'LL GET" : 'SETTLED'}
+                      {c.balanceDue > 0 ? "YOU'LL GET" : c.balanceDue < 0 ? "YOU'LL GIVE" : 'SETTLED'}
                     </span>
                   </div>
                 </div>
@@ -470,8 +509,20 @@ export const CreditsPage: React.FC = () => {
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                     NET BALANCE:
                   </span>
-                  <span className="text-sm sm:text-base font-black font-mono text-emerald-600">
-                    You'll Get: ₹{selectedCredit.balanceDue.toLocaleString('en-IN')}
+                  <span
+                    className={`text-sm sm:text-base font-black font-mono ${
+                      selectedCredit.balanceDue > 0
+                        ? 'text-rose-600'
+                        : selectedCredit.balanceDue < 0
+                        ? 'text-emerald-600'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    {selectedCredit.balanceDue > 0
+                      ? `You'll Get: ₹${selectedCredit.balanceDue.toLocaleString('en-IN')}`
+                      : selectedCredit.balanceDue < 0
+                      ? `You'll Give: ₹${Math.abs(selectedCredit.balanceDue).toLocaleString('en-IN')}`
+                      : 'Settled: ₹0'}
                   </span>
                 </div>
               </div>
@@ -492,6 +543,17 @@ export const CreditsPage: React.FC = () => {
               {selectedCredit.entries && selectedCredit.entries.length > 0 ? (
                 [...selectedCredit.entries].reverse().map((entry, idx, revEntries) => {
                     const isDeleted = !!entry.isDeleted;
+                    const entryKey = (entry as any)._id?.toString() || (entry as any).id;
+                    const rowBal = runningBalances.get(entryKey);
+                    const formattedRowBal =
+                      rowBal !== undefined
+                        ? rowBal > 0
+                          ? `Balance: ₹${rowBal.toLocaleString('en-IN')}`
+                          : rowBal < 0
+                          ? `Balance: ₹${Math.abs(rowBal).toLocaleString('en-IN')} (Advance)`
+                          : 'Balance: ₹0 (Settled)'
+                        : `Balance: ₹${selectedCredit.balanceDue.toLocaleString('en-IN')}`;
+
                     const dateKey = getEntryDateKey(entry.date, (entry as any).createdAt, (entry as any)._id);
                     const prevDateKey =
                       idx > 0
@@ -543,7 +605,7 @@ export const CreditsPage: React.FC = () => {
                               )}
                             </div>
                             <p className="text-[11px] text-slate-400 mt-0.5">
-                              Balance: ₹{selectedCredit.balanceDue.toLocaleString('en-IN')}
+                              {isDeleted ? 'Deleted' : formattedRowBal}
                             </p>
                             <p
                               className={`text-xs mt-1 font-medium ${
@@ -649,7 +711,7 @@ export const CreditsPage: React.FC = () => {
                             )}
                           </div>
                           <p className="text-xs text-slate-400 mt-0.5">
-                            Balance: ₹{selectedCredit.balanceDue.toLocaleString('en-IN')}
+                            {isDeleted ? 'Deleted' : formattedRowBal}
                           </p>
                           <p
                             className={`text-sm mt-1 font-medium ${

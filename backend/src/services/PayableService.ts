@@ -18,6 +18,22 @@ export class PayableService {
     this.transactionRepo = new TransactionRepository();
   }
 
+  public syncPayableTotals(payable: any) {
+    const activeEntries = (payable.entries || []).filter((e: any) => !e.isDeleted);
+    const totalBorrowed = activeEntries
+      .filter((e: any) => e.type === PayableTransactionType.BORROWED)
+      .reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
+    const totalPaid = activeEntries
+      .filter((e: any) => e.type === PayableTransactionType.PAID)
+      .reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
+
+    payable.totalBorrowed = totalBorrowed;
+    payable.totalPaid = totalPaid;
+    payable.balancePending = totalBorrowed - totalPaid;
+    payable.status = payable.balancePending === 0 ? 'SETTLED' : 'ACTIVE';
+    return payable;
+  }
+
   async createSupplier(dto: {
     partyName: string;
     phone?: string;
@@ -109,11 +125,9 @@ export class PayableService {
 
     if (payable) {
       payable.entries.push(newEntry as any);
-      payable.totalBorrowed += dto.amount;
-      payable.balancePending += dto.amount;
-      payable.status = 'ACTIVE';
       if (dto.phone) payable.phone = dto.phone;
       if (dto.dueDate) payable.dueDate = dto.dueDate;
+      this.syncPayableTotals(payable);
       await payable.save();
     } else {
       payable = await this.payableRepo.create({
@@ -184,11 +198,7 @@ export class PayableService {
     };
 
     payable.entries.push(newEntry as any);
-    payable.totalPaid += dto.amount;
-    payable.balancePending = Math.max(0, payable.balancePending - dto.amount);
-    if (payable.balancePending === 0) {
-      payable.status = 'SETTLED';
-    }
+    this.syncPayableTotals(payable);
     await payable.save();
 
     // 3. Master Transaction Journal
@@ -215,6 +225,32 @@ export class PayableService {
     const lockedIds = await ReconciliationLockService.getLockedEntryIds(allEntries);
 
     return payables.map((p: any) => {
+      const activeEntries = (p.entries || []).filter((e: any) => !e.isDeleted);
+      const calcBorrowed = activeEntries
+        .filter((e: any) => e.type === PayableTransactionType.BORROWED)
+        .reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
+      const calcPaid = activeEntries
+        .filter((e: any) => e.type === PayableTransactionType.PAID)
+        .reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
+      const calcBalance = calcBorrowed - calcPaid;
+      const calcStatus = calcBalance === 0 ? 'SETTLED' : 'ACTIVE';
+
+      // Self-heal stored document if there was a calculation discrepancy
+      if (
+        p.totalBorrowed !== calcBorrowed ||
+        p.totalPaid !== calcPaid ||
+        p.balancePending !== calcBalance ||
+        p.status !== calcStatus
+      ) {
+        p.totalBorrowed = calcBorrowed;
+        p.totalPaid = calcPaid;
+        p.balancePending = calcBalance;
+        p.status = calcStatus;
+        if (typeof p.save === 'function') {
+          p.save().catch((err: any) => console.error('Failed to auto-repair payable totals:', err));
+        }
+      }
+
       const obj = p.toObject ? p.toObject() : p;
       if (obj.entries) {
         obj.entries = obj.entries.map((e: any) => ({
@@ -222,6 +258,10 @@ export class PayableService {
           isReconciled: lockedIds.has(e._id?.toString()),
         }));
       }
+      obj.totalBorrowed = calcBorrowed;
+      obj.totalPaid = calcPaid;
+      obj.balancePending = calcBalance;
+      obj.status = calcStatus;
       return obj;
     });
   }
@@ -230,6 +270,10 @@ export class PayableService {
     const payable = await this.payableRepo.findById(id, 'entries.accountId');
     if (!payable) throw ApiError.notFound('Pending record not found');
     const lockedIds = await ReconciliationLockService.getLockedEntryIds(payable.entries || []);
+
+    this.syncPayableTotals(payable);
+    await payable.save().catch((err: any) => console.error('Failed to auto-repair payable totals:', err));
+
     const obj = (payable as any).toObject ? (payable as any).toObject() : payable;
     if (obj.entries) {
       obj.entries = obj.entries.map((e: any) => ({
@@ -237,6 +281,10 @@ export class PayableService {
         isReconciled: lockedIds.has(e._id?.toString()),
       }));
     }
+    obj.totalBorrowed = payable.totalBorrowed;
+    obj.totalPaid = payable.totalPaid;
+    obj.balancePending = payable.balancePending;
+    obj.status = payable.status;
     return obj;
   }
 
@@ -276,22 +324,18 @@ export class PayableService {
         if (entry.type === PayableTransactionType.BORROWED) {
           // If borrowed amount increases, cash received increases
           await this.accountRepo.adjustBalance(accountId, delta);
-          payable.totalBorrowed += delta;
-          payable.balancePending += delta;
         } else if (entry.type === PayableTransactionType.PAID) {
           // If paid amount increases, funds deducted from account
           await this.accountRepo.adjustBalance(accountId, -delta);
-          payable.totalPaid += delta;
-          payable.balancePending = Math.max(0, payable.balancePending - delta);
         }
       }
     }
 
-    payable.status = payable.balancePending <= 0 ? 'SETTLED' : 'ACTIVE';
     entry.amount = newAmount;
     if (dto.remarks !== undefined) entry.remarks = dto.remarks.trim();
     if (dto.date) entry.date = parseEntryDate(dto.date);
 
+    this.syncPayableTotals(payable);
     await payable.save();
     return await this.payableRepo.findById(payableId, 'entries.accountId');
   }
@@ -313,19 +357,15 @@ export class PayableService {
     if (accountId) {
       if (entry.type === PayableTransactionType.BORROWED) {
         await this.accountRepo.adjustBalance(accountId, -entry.amount);
-        payable.totalBorrowed = Math.max(0, payable.totalBorrowed - entry.amount);
-        payable.balancePending = Math.max(0, payable.balancePending - entry.amount);
       } else if (entry.type === PayableTransactionType.PAID) {
         await this.accountRepo.adjustBalance(accountId, entry.amount);
-        payable.totalPaid = Math.max(0, payable.totalPaid - entry.amount);
-        payable.balancePending += entry.amount;
       }
     }
 
-    payable.status = payable.balancePending <= 0 ? 'SETTLED' : 'ACTIVE';
     entry.isDeleted = true;
     entry.deletedAt = new Date();
 
+    this.syncPayableTotals(payable);
     await payable.save();
     return await this.payableRepo.findById(payableId, 'entries.accountId');
   }

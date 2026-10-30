@@ -18,6 +18,22 @@ export class CreditService {
     this.transactionRepo = new TransactionRepository();
   }
 
+  public syncCreditTotals(credit: any) {
+    const activeEntries = (credit.entries || []).filter((e: any) => !e.isDeleted);
+    const totalGiven = activeEntries
+      .filter((e: any) => e.type === CreditTransactionType.GIVEN)
+      .reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
+    const totalRepaid = activeEntries
+      .filter((e: any) => e.type === CreditTransactionType.REPAYMENT)
+      .reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
+
+    credit.totalGiven = totalGiven;
+    credit.totalRepaid = totalRepaid;
+    credit.balanceDue = totalGiven - totalRepaid;
+    credit.status = credit.balanceDue === 0 ? 'SETTLED' : 'ACTIVE';
+    return credit;
+  }
+
   async createCustomer(dto: {
     partyName: string;
     phone?: string;
@@ -109,11 +125,9 @@ export class CreditService {
 
     if (credit) {
       credit.entries.push(newEntry as any);
-      credit.totalGiven += dto.amount;
-      credit.balanceDue += dto.amount;
-      credit.status = 'ACTIVE';
       if (dto.phone) credit.phone = dto.phone;
       if (dto.dueDate) credit.dueDate = dto.dueDate;
+      this.syncCreditTotals(credit);
       await credit.save();
     } else {
       credit = await this.creditRepo.create({
@@ -180,11 +194,7 @@ export class CreditService {
     };
 
     credit.entries.push(newEntry as any);
-    credit.totalRepaid += dto.amount;
-    credit.balanceDue = Math.max(0, credit.balanceDue - dto.amount);
-    if (credit.balanceDue === 0) {
-      credit.status = 'SETTLED';
-    }
+    this.syncCreditTotals(credit);
     await credit.save();
 
     // 3. Master Transaction Journal
@@ -211,6 +221,32 @@ export class CreditService {
     const lockedIds = await ReconciliationLockService.getLockedEntryIds(allEntries);
 
     return credits.map((c: any) => {
+      const activeEntries = (c.entries || []).filter((e: any) => !e.isDeleted);
+      const calcGiven = activeEntries
+        .filter((e: any) => e.type === CreditTransactionType.GIVEN)
+        .reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
+      const calcRepaid = activeEntries
+        .filter((e: any) => e.type === CreditTransactionType.REPAYMENT)
+        .reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
+      const calcBalance = calcGiven - calcRepaid;
+      const calcStatus = calcBalance === 0 ? 'SETTLED' : 'ACTIVE';
+
+      // Self-heal stored document if there was a calculation discrepancy
+      if (
+        c.totalGiven !== calcGiven ||
+        c.totalRepaid !== calcRepaid ||
+        c.balanceDue !== calcBalance ||
+        c.status !== calcStatus
+      ) {
+        c.totalGiven = calcGiven;
+        c.totalRepaid = calcRepaid;
+        c.balanceDue = calcBalance;
+        c.status = calcStatus;
+        if (typeof c.save === 'function') {
+          c.save().catch((err: any) => console.error('Failed to auto-repair credit totals:', err));
+        }
+      }
+
       const obj = c.toObject ? c.toObject() : c;
       if (obj.entries) {
         obj.entries = obj.entries.map((e: any) => ({
@@ -218,6 +254,10 @@ export class CreditService {
           isReconciled: lockedIds.has(e._id?.toString()),
         }));
       }
+      obj.totalGiven = calcGiven;
+      obj.totalRepaid = calcRepaid;
+      obj.balanceDue = calcBalance;
+      obj.status = calcStatus;
       return obj;
     });
   }
@@ -226,6 +266,10 @@ export class CreditService {
     const credit = await this.creditRepo.findById(id, 'entries.accountId');
     if (!credit) throw ApiError.notFound('Credit record not found');
     const lockedIds = await ReconciliationLockService.getLockedEntryIds(credit.entries || []);
+    
+    this.syncCreditTotals(credit);
+    await credit.save().catch((err: any) => console.error('Failed to auto-repair credit totals:', err));
+
     const obj = (credit as any).toObject ? (credit as any).toObject() : credit;
     if (obj.entries) {
       obj.entries = obj.entries.map((e: any) => ({
@@ -233,6 +277,10 @@ export class CreditService {
         isReconciled: lockedIds.has(e._id?.toString()),
       }));
     }
+    obj.totalGiven = credit.totalGiven;
+    obj.totalRepaid = credit.totalRepaid;
+    obj.balanceDue = credit.balanceDue;
+    obj.status = credit.status;
     return obj;
   }
 
@@ -272,22 +320,18 @@ export class CreditService {
         if (entry.type === CreditTransactionType.GIVEN) {
           // If given amount increases, deduct delta from account balance
           await this.accountRepo.adjustBalance(accountId, -delta);
-          credit.totalGiven += delta;
-          credit.balanceDue += delta;
         } else if (entry.type === CreditTransactionType.REPAYMENT) {
           // If repayment increases, add delta to account balance
           await this.accountRepo.adjustBalance(accountId, delta);
-          credit.totalRepaid += delta;
-          credit.balanceDue = Math.max(0, credit.balanceDue - delta);
         }
       }
     }
 
-    credit.status = credit.balanceDue <= 0 ? 'SETTLED' : 'ACTIVE';
     entry.amount = newAmount;
     if (dto.remarks !== undefined) entry.remarks = dto.remarks.trim();
     if (dto.date) entry.date = parseEntryDate(dto.date);
 
+    this.syncCreditTotals(credit);
     await credit.save();
     return await this.creditRepo.findById(creditId, 'entries.accountId');
   }
@@ -309,19 +353,15 @@ export class CreditService {
     if (accountId) {
       if (entry.type === CreditTransactionType.GIVEN) {
         await this.accountRepo.adjustBalance(accountId, entry.amount);
-        credit.totalGiven = Math.max(0, credit.totalGiven - entry.amount);
-        credit.balanceDue = Math.max(0, credit.balanceDue - entry.amount);
       } else if (entry.type === CreditTransactionType.REPAYMENT) {
         await this.accountRepo.adjustBalance(accountId, -entry.amount);
-        credit.totalRepaid = Math.max(0, credit.totalRepaid - entry.amount);
-        credit.balanceDue += entry.amount;
       }
     }
 
-    credit.status = credit.balanceDue <= 0 ? 'SETTLED' : 'ACTIVE';
     entry.isDeleted = true;
     entry.deletedAt = new Date();
 
+    this.syncCreditTotals(credit);
     await credit.save();
     return await this.creditRepo.findById(creditId, 'entries.accountId');
   }

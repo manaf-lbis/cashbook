@@ -41,6 +41,8 @@ export const PayablesPage: React.FC = () => {
 
   // Currently selected supplier
   const [selectedPayable, setSelectedPayable] = useState<IPayable | null>(null);
+  const selectedPayableIdRef = React.useRef<string | null>(null);
+  selectedPayableIdRef.current = selectedPayable?._id || null;
 
   // Modals
   const [isAddSupplierOpen, setIsAddSupplierOpen] = useState(false);
@@ -65,11 +67,19 @@ export const PayablesPage: React.FC = () => {
       const res = await apiClient.get<ApiResponse<IPayable[]>>('/payables');
       if (res.data.success) {
         setPayables(res.data.data);
-        if (res.data.data.length > 0 && !selectedPayable) {
+        const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
+        const currentId = selectedPayableIdRef.current;
+        if (currentId) {
+          const updated = res.data.data.find((p) => p._id === currentId);
+          if (updated) {
+            setSelectedPayable(updated);
+          } else if (isDesktop && res.data.data.length > 0) {
+            setSelectedPayable(res.data.data[0]);
+          } else {
+            setSelectedPayable(null);
+          }
+        } else if (isDesktop && res.data.data.length > 0) {
           setSelectedPayable(res.data.data[0]);
-        } else if (selectedPayable) {
-          const updated = res.data.data.find((p) => p._id === selectedPayable._id);
-          if (updated) setSelectedPayable(updated);
         }
       }
     } catch (err: any) {
@@ -77,7 +87,7 @@ export const PayablesPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [showToast, selectedPayable?._id]);
+  }, [showToast]);
 
   useEffect(() => {
     fetchPayables();
@@ -104,15 +114,38 @@ export const PayablesPage: React.FC = () => {
     try {
       await apiClient.delete(`/payables/${selectedPayable._id}/entries/${entry._id}`);
       showToast('Payable entry marked as deleted', 'success');
-      fetchPayables();
-      refreshAccounts();
+      await refreshAccounts();
+      await fetchPayables();
     } catch (err: any) {
       showToast(err.message || 'Failed to delete payable entry', 'error');
     }
   };
 
   // Totals
-  const totalYouWillPay = payables.reduce((sum, p) => sum + (p.status === 'ACTIVE' ? p.balancePending : 0), 0);
+  const totalYouWillPay = payables.reduce((sum, p) => sum + (p.balancePending > 0 ? p.balancePending : 0), 0);
+  const totalYouWillGet = payables.reduce((sum, p) => sum + (p.balancePending < 0 ? Math.abs(p.balancePending) : 0), 0);
+
+  // Pre-calculate running balances for selectedPayable's entries
+  const runningBalances = React.useMemo(() => {
+    if (!selectedPayable || !selectedPayable.entries) return new Map<string, number>();
+    const map = new Map<string, number>();
+    // Sort active (non-deleted) entries chronologically (oldest first)
+    const validEntries = [...selectedPayable.entries]
+      .filter((e) => !e.isDeleted)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    let bal = 0;
+    for (const e of validEntries) {
+      if (e.type === PayableTransactionType.BORROWED) {
+        bal += e.amount;
+      } else {
+        bal -= e.amount;
+      }
+      const idKey = (e as any)._id?.toString() || (e as any).id;
+      if (idKey) map.set(idKey, bal);
+    }
+    return map;
+  }, [selectedPayable]);
 
   // Filter & Sort
   const filteredPayables = payables
@@ -277,12 +310,14 @@ export const PayablesPage: React.FC = () => {
 
           <div>
             <span className="text-slate-500 font-medium">You'll Get:</span>{' '}
-            <span className="font-mono font-bold text-emerald-600 text-sm sm:text-base">₹0 ↙</span>
+            <span className="font-mono font-bold text-emerald-600 text-sm sm:text-base">
+              ₹{totalYouWillGet.toLocaleString('en-IN')} ↙
+            </span>
           </div>
 
           <button
             onClick={() => window.print()}
-            className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50/80 hover:bg-blue-100 px-2.5 sm:px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap"
+            className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50/80 hover:bg-blue-100 px-2.5 sm:px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
           >
             <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> View Report
           </button>
@@ -383,13 +418,17 @@ export const PayablesPage: React.FC = () => {
                   <div className="text-right">
                     <p
                       className={`text-sm font-mono font-bold ${
-                        s.balancePending > 0 ? 'text-rose-600' : 'text-slate-400'
+                        s.balancePending > 0
+                          ? 'text-rose-600'
+                          : s.balancePending < 0
+                          ? 'text-emerald-600'
+                          : 'text-slate-400'
                       }`}
                     >
-                      ₹{s.balancePending.toLocaleString('en-IN')}
+                      ₹{Math.abs(s.balancePending).toLocaleString('en-IN')}
                     </p>
                     <span className="text-[10px] uppercase font-bold text-slate-400">
-                      {s.balancePending > 0 ? "YOU'LL PAY" : 'SETTLED'}
+                      {s.balancePending > 0 ? "YOU'LL PAY" : s.balancePending < 0 ? "YOU'LL GET" : 'SETTLED'}
                     </span>
                   </div>
                 </div>
@@ -467,8 +506,20 @@ export const PayablesPage: React.FC = () => {
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                     NET BALANCE:
                   </span>
-                  <span className="text-sm sm:text-base font-black font-mono text-rose-600">
-                    You'll Pay: ₹{selectedPayable.balancePending.toLocaleString('en-IN')}
+                  <span
+                    className={`text-sm sm:text-base font-black font-mono ${
+                      selectedPayable.balancePending > 0
+                        ? 'text-rose-600'
+                        : selectedPayable.balancePending < 0
+                        ? 'text-emerald-600'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    {selectedPayable.balancePending > 0
+                      ? `You'll Pay: ₹${selectedPayable.balancePending.toLocaleString('en-IN')}`
+                      : selectedPayable.balancePending < 0
+                      ? `You'll Get: ₹${Math.abs(selectedPayable.balancePending).toLocaleString('en-IN')}`
+                      : 'Settled: ₹0'}
                   </span>
                 </div>
               </div>
@@ -489,6 +540,17 @@ export const PayablesPage: React.FC = () => {
               {selectedPayable.entries && selectedPayable.entries.length > 0 ? (
                 [...selectedPayable.entries].reverse().map((entry, idx, revEntries) => {
                     const isDeleted = !!entry.isDeleted;
+                    const entryKey = (entry as any)._id?.toString() || (entry as any).id;
+                    const rowBal = runningBalances.get(entryKey);
+                    const formattedRowBal =
+                      rowBal !== undefined
+                        ? rowBal > 0
+                          ? `Balance: ₹${rowBal.toLocaleString('en-IN')}`
+                          : rowBal < 0
+                          ? `Balance: ₹${Math.abs(rowBal).toLocaleString('en-IN')} (Advance)`
+                          : 'Balance: ₹0 (Settled)'
+                        : `Balance: ₹${selectedPayable.balancePending.toLocaleString('en-IN')}`;
+
                     const dateKey = getEntryDateKey(entry.date, (entry as any).createdAt, (entry as any)._id);
                     const prevDateKey =
                       idx > 0
@@ -540,7 +602,7 @@ export const PayablesPage: React.FC = () => {
                               )}
                             </div>
                             <p className="text-[11px] text-slate-400 mt-0.5">
-                              Balance: ₹{selectedPayable.balancePending.toLocaleString('en-IN')}
+                              {isDeleted ? 'Deleted' : formattedRowBal}
                             </p>
                             <p
                               className={`text-xs mt-1 font-medium ${
@@ -648,7 +710,7 @@ export const PayablesPage: React.FC = () => {
                             )}
                           </div>
                           <p className="text-xs text-slate-400 mt-0.5">
-                            Balance: ₹{selectedPayable.balancePending.toLocaleString('en-IN')}
+                            {isDeleted ? 'Deleted' : formattedRowBal}
                           </p>
                           <p
                             className={`text-sm mt-1 font-medium ${
