@@ -208,9 +208,15 @@ export class AuthService {
     };
 
     const signOptions: SignOptions = {
-      expiresIn: (ENV.JWT_EXPIRES_IN || '7d') as any,
       algorithm: 'HS256',
     };
+
+    // If JWT_EXPIRES_IN is configured and not set to 'never', 'none', or '0', set expiresIn.
+    // Otherwise, create a non-expiring token.
+    const expConfig = (ENV.JWT_EXPIRES_IN || '').trim().toLowerCase();
+    if (expConfig && expConfig !== 'never' && expConfig !== 'none' && expConfig !== '0' && expConfig !== 'false') {
+      signOptions.expiresIn = expConfig as any;
+    }
 
     const token = jwt.sign(payload, ENV.JWT_SECRET, signOptions);
 
@@ -252,9 +258,15 @@ export class AuthService {
     };
 
     const signOptions: SignOptions = {
-      expiresIn: (ENV.JWT_EXPIRES_IN || '7d') as any,
       algorithm: 'HS256',
     };
+
+    // If JWT_EXPIRES_IN is configured and not set to 'never', 'none', or '0', set expiresIn.
+    // Otherwise, create a non-expiring token.
+    const expConfig = (ENV.JWT_EXPIRES_IN || '').trim().toLowerCase();
+    if (expConfig && expConfig !== 'never' && expConfig !== 'none' && expConfig !== '0' && expConfig !== 'false') {
+      signOptions.expiresIn = expConfig as any;
+    }
 
     const token = jwt.sign(payload, ENV.JWT_SECRET, signOptions);
 
