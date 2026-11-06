@@ -1,19 +1,33 @@
 import { Resend } from 'resend';
+import nodemailer, { Transporter } from 'nodemailer';
 import { ENV } from '../config/env';
 
 export class EmailService {
   private static resendClient: Resend | null = null;
+  private static nodemailerTransporter: Transporter | null = null;
 
-  private static getClient(): Resend {
-    if (!this.resendClient) {
-      const apiKey = (ENV.RESEND_API_KEY || '').trim();
-      this.resendClient = new Resend(apiKey);
+  private static getResendClient(): Resend | null {
+    if (!this.resendClient && ENV.RESEND_API_KEY && ENV.RESEND_API_KEY.startsWith('re_')) {
+      this.resendClient = new Resend(ENV.RESEND_API_KEY.trim());
     }
     return this.resendClient;
   }
 
+  private static getNodemailerTransporter(): Transporter | null {
+    if (!this.nodemailerTransporter && ENV.SMTP_USER && ENV.SMTP_PASS) {
+      this.nodemailerTransporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: ENV.SMTP_USER,
+          pass: ENV.SMTP_PASS,
+        },
+      });
+    }
+    return this.nodemailerTransporter;
+  }
+
   /**
-   * Sends a 6-digit Login OTP to the user's email via Resend
+   * Sends a 6-digit Login OTP to the user's email via Nodemailer (Gmail) or Resend
    * and always logs the OTP to the console for testing and auditing.
    */
   static async sendLoginOtp(email: string, otp: string): Promise<{ success: boolean; id?: string; error?: string }> {
@@ -83,26 +97,49 @@ export class EmailService {
       </html>
     `;
 
-    try {
-      const resend = this.getClient();
-      const response = await resend.emails.send({
-        from: ENV.EMAIL_FROM || 'Cashbook Pro <onboarding@resend.dev>',
-        to: [formattedEmail],
-        subject: `Your Cashbook Verification Code: ${otp}`,
-        html: htmlContent,
-      });
+    // Strategy 1: Attempt via Nodemailer SMTP (e.g. Gmail)
+    const transporter = this.getNodemailerTransporter();
+    if (transporter && ENV.SMTP_USER) {
+      try {
+        const info = await transporter.sendMail({
+          from: `"Cashbook Pro" <${ENV.SMTP_USER}>`,
+          to: formattedEmail,
+          subject: `Your Cashbook Verification Code: ${otp}`,
+          text: `Your Cashbook verification code is: ${otp}. It is valid for 10 minutes.`,
+          html: htmlContent,
+        });
 
-      if (response.error) {
-        console.warn(`[Resend Notice] Resend API returned error:`, response.error);
-        return { success: false, error: response.error.message };
+        console.log(`[SMTP Success] Email sent successfully to ${formattedEmail}. MessageId:`, info.messageId);
+        return { success: true, id: info.messageId };
+      } catch (smtpErr: any) {
+        console.warn(`[SMTP Warning] Could not deliver email via SMTP:`, smtpErr?.message || smtpErr);
       }
-
-      console.log(`[Resend Success] Email sent successfully to ${formattedEmail}. Resend Email ID:`, response.data?.id);
-      return { success: true, id: response.data?.id };
-    } catch (err: any) {
-      console.warn(`[Resend Error] Could not deliver email via Resend API:`, err?.message || err);
-      // Return gracefully with error message so login flow doesn't crash
-      return { success: false, error: err?.message || 'Email delivery failed' };
     }
+
+    // Strategy 2: Attempt via Resend API if configured
+    const resend = this.getResendClient();
+    if (resend) {
+      try {
+        const response = await resend.emails.send({
+          from: ENV.EMAIL_FROM || 'Cashbook Pro <onboarding@resend.dev>',
+          to: [formattedEmail],
+          subject: `Your Cashbook Verification Code: ${otp}`,
+          html: htmlContent,
+        });
+
+        if (response.error) {
+          console.warn(`[Resend Notice] Resend API returned error:`, response.error);
+          return { success: false, error: response.error.message };
+        }
+
+        console.log(`[Resend Success] Email sent successfully to ${formattedEmail}. Resend Email ID:`, response.data?.id);
+        return { success: true, id: response.data?.id };
+      } catch (err: any) {
+        console.warn(`[Resend Error] Could not deliver email via Resend API:`, err?.message || err);
+        return { success: false, error: err?.message || 'Email delivery failed' };
+      }
+    }
+
+    return { success: false, error: 'No email transport available' };
   }
 }
