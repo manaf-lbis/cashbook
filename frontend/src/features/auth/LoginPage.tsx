@@ -19,11 +19,12 @@ import {
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { sendOtp, verifyOtp } = useAuth();
+  const { sendOtp, verifyOtp, login } = useAuth();
   const { showToast } = useToast();
 
-  const [step, setStep] = useState<'EMAIL' | 'OTP'>('EMAIL');
+  const [step, setStep] = useState<'EMAIL' | 'OTP' | 'PASSWORD'>('EMAIL');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -63,8 +64,15 @@ export const LoginPage: React.FC = () => {
       setStep('OTP');
       setCountdown(60);
       setOtpDigits(['', '', '', '', '', '']);
+      if (res && res.otp) {
+        // Auto-fill or suggest if returned (e.g. SMTP blocked on hosting)
+        const digits = res.otp.split('');
+        if (digits.length === 6) {
+          setOtpDigits(digits);
+        }
+      }
       if (res && res.emailDelivery === false) {
-        showToast(res.message || 'Verification code logged to server console', 'info');
+        showToast(res.message || 'Verification code generated', 'info');
       } else {
         showToast('Verification code sent to your email', 'success');
       }
@@ -141,6 +149,33 @@ export const LoginPage: React.FC = () => {
     } catch (err: any) {
       setErrorMessage(err.message || 'Invalid or expired code. Please try again.');
       showToast(err.message || 'Verification failed', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setErrorMessage('Please enter your email or username');
+      return;
+    }
+    if (!password) {
+      setErrorMessage('Please enter your password');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await login(cleanEmail, password);
+      showToast('Welcome back! Signed in successfully.', 'success');
+      navigate(from, { replace: true });
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Invalid email or password');
+      showToast(err.message || 'Login failed', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -234,6 +269,94 @@ export const LoginPage: React.FC = () => {
                   </>
                 )}
               </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep('PASSWORD');
+                    setErrorMessage(null);
+                  }}
+                  className="text-xs text-slate-400 hover:text-blue-400 font-semibold transition-colors flex items-center justify-center gap-1.5 mx-auto"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Sign in with Password instead</span>
+                </button>
+              </div>
+            </form>
+          ) : step === 'PASSWORD' ? (
+            /* STEP 3: DIRECT PASSWORD LOGIN (Safe for environments where external SMTP is blocked) */
+            <form onSubmit={handlePasswordLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                  Email or Username
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="text"
+                    autoFocus
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@company.com"
+                    className="w-full h-12 pl-10 pr-4 bg-slate-800/60 border border-slate-700/80 rounded-2xl text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25 focus:bg-slate-800/90 transition-all font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                  Password
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    className="w-full h-12 pl-10 pr-4 bg-slate-800/60 border border-slate-700/80 rounded-2xl text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25 focus:bg-slate-800/90 transition-all font-mono"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full h-12 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:opacity-95 text-white font-bold text-sm rounded-2xl shadow-lg shadow-blue-500/25 transition-all transform active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2 mt-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Signing In...</span>
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="w-4 h-4" />
+                    <span>Sign In</span>
+                  </>
+                )}
+              </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep('EMAIL');
+                    setErrorMessage(null);
+                  }}
+                  className="text-xs text-slate-400 hover:text-blue-400 font-semibold transition-colors flex items-center justify-center gap-1.5 mx-auto"
+                >
+                  <Mail className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Sign in with Email OTP code</span>
+                </button>
+              </div>
             </form>
           ) : (
             /* STEP 2: 6-DIGIT PASSCODE */

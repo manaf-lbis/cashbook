@@ -61,6 +61,10 @@ export class AuthService {
           admin.isActive = true;
           needsSave = true;
         }
+        if (ENV.ADMIN_PASSWORD && (!admin.password || !(await admin.comparePassword(ENV.ADMIN_PASSWORD)))) {
+          admin.password = ENV.ADMIN_PASSWORD;
+          needsSave = true;
+        }
         if (needsSave) {
           await admin.save();
           console.log(`[Security] Updated administrator account to ${targetEmail} (Active: true)`);
@@ -75,7 +79,13 @@ export class AuthService {
    * Generates a 6-digit OTP only for pre-registered active users,
    * records it in DB, logs to console, and sends email via Resend.
    */
-  static async sendLoginOtp(email: string): Promise<{ success: boolean; message: string; emailDelivery: boolean; error?: string }> {
+  static async sendLoginOtp(email: string): Promise<{
+    success: boolean;
+    message: string;
+    emailDelivery: boolean;
+    error?: string;
+    otp?: string;
+  }> {
     const formattedEmail = email.toLowerCase().trim();
     const adminEmail = (ENV.ADMIN_USERNAME || 'loginktkd@gmail.com').toLowerCase().trim();
 
@@ -143,6 +153,8 @@ export class AuthService {
         : `Verification code generated (logged to server console)`,
       emailDelivery: emailResult.success,
       error: emailResult.error,
+      // For developer/admin convenience on free-tier environments where external email ports might be blocked
+      otp: !emailResult.success || process.env.NODE_ENV !== 'production' ? otp : undefined,
     };
   }
 

@@ -7,7 +7,7 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  sendOtp: (email: string) => Promise<{ success: boolean; message: string; emailDelivery: boolean; error?: string }>;
+  sendOtp: (email: string) => Promise<{ success: boolean; message: string; emailDelivery: boolean; error?: string; otp?: string }>;
   verifyOtp: (email: string, otp: string) => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
