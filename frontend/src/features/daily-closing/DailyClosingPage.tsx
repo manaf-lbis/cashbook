@@ -53,6 +53,20 @@ export const DailyClosingPage: React.FC = () => {
   const [manualSplitUps, setManualSplitUps] = useState<IManualCashSplitUp[]>([]);
   const [notes, setNotes] = useState<string>('');
 
+  // Customizable Quick Add Presets State (Persisted in localStorage)
+  const [quickPresets, setQuickPresets] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('cashbook_quick_presets');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // Fallback
+    }
+    return ['Fedbank', 'SBI', 'CSC Wallet', 'Counter Cash Drawer'];
+  });
+  const [isAddingCustomPreset, setIsAddingCustomPreset] = useState(false);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [saveForLater, setSaveForLater] = useState(true);
+
   // Fetch live summary for selected date
   const fetchSummary = useCallback(async (dateStr: string) => {
     try {
@@ -144,6 +158,38 @@ export const DailyClosingPage: React.FC = () => {
       return;
     }
     addSplitUpRow(name);
+  };
+
+  const handleCreatePreset = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = newPresetName.trim();
+    if (!clean) return;
+
+    // 1. Add to current count list immediately
+    addQuickPreset(clean);
+
+    // 2. If user checked "Save for later", persist into quick presets
+    if (saveForLater) {
+      if (!quickPresets.some((p) => p.toLowerCase() === clean.toLowerCase())) {
+        const updated = [...quickPresets, clean];
+        setQuickPresets(updated);
+        localStorage.setItem('cashbook_quick_presets', JSON.stringify(updated));
+        showToast(`"${clean}" saved to Quick Add area for later`, 'success');
+      }
+    } else {
+      showToast(`"${clean}" added for today's count only`, 'info');
+    }
+
+    setNewPresetName('');
+    setIsAddingCustomPreset(false);
+  };
+
+  const removeQuickPresetFromArea = (nameToRemove: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = quickPresets.filter((p) => p !== nameToRemove);
+    setQuickPresets(updated);
+    localStorage.setItem('cashbook_quick_presets', JSON.stringify(updated));
+    showToast(`Removed "${nameToRemove}" from Quick Add area`, 'info');
   };
 
   // Save Daily Closing
@@ -476,37 +522,107 @@ export const DailyClosingPage: React.FC = () => {
                         <span className="text-xs text-slate-400 font-medium">Physical & Digital Count</span>
                       </div>
 
-                      {/* Quick Add Presets */}
-                      <div className="mt-4 flex flex-wrap items-center gap-1.5">
-                        <span className="text-[11px] text-slate-400 font-semibold mr-1">Quick Add:</span>
-                        <button
-                          type="button"
-                          onClick={() => addQuickPreset('Fedbank')}
-                          className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer transition-colors"
-                        >
-                          + Fedbank
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => addQuickPreset('SBI')}
-                          className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer transition-colors"
-                        >
-                          + SBI
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => addQuickPreset('CSC Wallet')}
-                          className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer transition-colors"
-                        >
-                          + CSC Wallet
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => addQuickPreset('Counter Cash Drawer')}
-                          className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer transition-colors"
-                        >
-                          + Cash Drawer
-                        </button>
+                      {/* Quick Add Presets (Customizable with Save for Later / One-Time) */}
+                      <div className="mt-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
+                            Quick Add Area
+                          </span>
+                          {!isAddingCustomPreset && (
+                            <button
+                              type="button"
+                              onClick={() => setIsAddingCustomPreset(true)}
+                              className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" /> Customize
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Inline Add Preset Popover / Form */}
+                        {isAddingCustomPreset && (
+                          <form
+                            onSubmit={handleCreatePreset}
+                            className="p-3 rounded-xl bg-blue-50/70 border border-blue-200/80 space-y-2.5 animate-in fade-in duration-150"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-blue-900">Add Account / Cash Source</span>
+                              <button
+                                type="button"
+                                onClick={() => setIsAddingCustomPreset(false)}
+                                className="text-slate-400 hover:text-slate-600 p-0.5"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 hidden" />
+                                <span className="text-xs font-bold">&times;</span>
+                              </button>
+                            </div>
+
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="e.g. Canara Bank, Petty Cash..."
+                              value={newPresetName}
+                              onChange={(e) => setNewPresetName(e.target.value)}
+                              className="w-full px-3 py-1.5 text-xs bg-white border border-blue-200 rounded-lg outline-none focus:border-blue-500 font-semibold"
+                            />
+
+                            <div className="flex items-center justify-between text-xs">
+                              <label className="flex items-center gap-1.5 cursor-pointer text-slate-700 select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={saveForLater}
+                                  onChange={(e) => setSaveForLater(e.target.checked)}
+                                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span>Save to Quick Add for later</span>
+                              </label>
+
+                              <button
+                                type="submit"
+                                disabled={!newPresetName.trim()}
+                                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-bold text-xs cursor-pointer shadow-xs"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          </form>
+                        )}
+
+                        {/* Preset Chips */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {quickPresets.map((preset) => (
+                            <div
+                              key={preset}
+                              className="group inline-flex items-center bg-slate-100 hover:bg-slate-200/90 text-slate-700 rounded-lg text-xs font-semibold pl-2.5 pr-1 py-1 transition-colors shadow-2xs"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => addQuickPreset(preset)}
+                                className="cursor-pointer hover:text-blue-600 mr-1.5"
+                                title={`Add "${preset}" to today's count`}
+                              >
+                                + {preset}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => removeQuickPresetFromArea(preset, e)}
+                                className="opacity-40 group-hover:opacity-100 hover:text-rose-600 p-0.5 rounded cursor-pointer transition-opacity"
+                                title={`Remove "${preset}" from Quick Add area`}
+                              >
+                                &times;
+                              </button>
+                            </div>
+                          ))}
+
+                          <button
+                            type="button"
+                            onClick={() => setIsAddingCustomPreset(true)}
+                            className="px-2 py-1 text-xs font-semibold border border-dashed border-slate-300 hover:border-blue-400 text-slate-500 hover:text-blue-600 rounded-lg cursor-pointer transition-colors flex items-center gap-1"
+                            title="Add a custom account"
+                          >
+                            <Plus className="w-3 h-3" /> New
+                          </button>
+                        </div>
                       </div>
 
                       {/* Dynamic Split-up Input Rows */}

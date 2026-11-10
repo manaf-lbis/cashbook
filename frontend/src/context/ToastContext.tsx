@@ -22,6 +22,21 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => [...prev, { id, message, type }]);
 
+    // Haptic Feedback for mobile devices
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        if (type === 'success') {
+          navigator.vibrate([40, 30, 40]); // Crisp double-tap vibration
+        } else if (type === 'error') {
+          navigator.vibrate([80, 50, 80]); // Long warning vibration
+        } else {
+          navigator.vibrate(30);
+        }
+      } catch {
+        // Ignore devices that block vibration without user interaction
+      }
+    }
+
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);

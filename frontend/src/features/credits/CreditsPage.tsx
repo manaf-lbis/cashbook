@@ -10,6 +10,8 @@ import {
   Edit3,
   Trash2,
   Lock,
+  MessageCircle,
+  Phone,
 } from 'lucide-react';
 import { apiClient, formatINR, formatDate, formatDateTime, formatEntryDateTime, getEntryDateKey } from '../../api/client';
 import { ICredit, ICreditEntry, CreditTransactionType, ApiResponse } from '../../types';
@@ -18,6 +20,7 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
+import { LedgerSkeleton } from '../../components/ui/Skeleton';
 import { DaySeparator } from '../../components/ui/DaySeparator';
 import { useToast } from '../../context/ToastContext';
 import { useAccounts } from '../../context/AccountContext';
@@ -344,6 +347,28 @@ export const CreditsPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Quick Filter Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+            {[
+              { id: 'ALL', label: 'All' },
+              { id: 'DUE', label: "You'll Get (Due)" },
+              { id: 'SETTLED', label: 'Settled (₹0)' },
+            ].map((chip) => (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => setFilterType(chip.id)}
+                className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
+                  filterType === chip.id
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                }`}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+
           <div className="grid grid-cols-2 gap-2.5 text-xs">
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 mb-1">Filter By</label>
@@ -383,7 +408,9 @@ export const CreditsPage: React.FC = () => {
         {/* Customer Items List */}
         <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
           {loading ? (
-            <LoadingSpinner message="Loading customer book..." />
+            <div className="p-4">
+              <LedgerSkeleton count={6} />
+            </div>
           ) : filteredCredits.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-400">
               No customers found. Click <strong>+ Add Customer</strong> below.
@@ -467,7 +494,8 @@ export const CreditsPage: React.FC = () => {
                 <div className="flex items-center gap-3 min-w-0">
                   <button
                     onClick={() => setSelectedCredit(null)}
-                    className="md:hidden p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg -ml-1 flex-shrink-0"
+                    className="md:hidden p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg -ml-1 flex-shrink-0 cursor-pointer"
+                    title="Back to list"
                   >
                     <ArrowLeft className="w-5 h-5" />
                   </button>
@@ -488,22 +516,68 @@ export const CreditsPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Mobile Report Button */}
-                <button
-                  onClick={() => window.print()}
-                  className="sm:hidden text-xs font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors flex-shrink-0"
-                >
-                  <FileText className="w-3.5 h-3.5 text-slate-500" /> Report
-                </button>
+                {/* Mobile Quick Actions */}
+                <div className="flex sm:hidden items-center gap-1.5 flex-shrink-0">
+                  {selectedCredit.phone && (
+                    <>
+                      <a
+                        href={`https://wa.me/${selectedCredit.phone.replace(/\D/g, '').length === 10 ? '91' + selectedCredit.phone.replace(/\D/g, '') : selectedCredit.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Dear ${selectedCredit.partyName}, gentle reminder from Cashbook: your pending balance is ₹${selectedCredit.balanceDue.toLocaleString('en-IN')}. Thank you!`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg flex items-center justify-center cursor-pointer"
+                        title="Send WhatsApp Reminder"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                      </a>
+                      <a
+                        href={`tel:${selectedCredit.phone}`}
+                        className="p-1.5 text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center justify-center cursor-pointer"
+                        title="Call Customer"
+                      >
+                        <Phone className="w-4 h-4" />
+                      </a>
+                    </>
+                  )}
+                  <button
+                    onClick={() => window.print()}
+                    className="p-1.5 text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 rounded-lg flex items-center justify-center cursor-pointer"
+                    title="Print / View Report"
+                  >
+                    <FileText className="w-4 h-4 text-slate-500" />
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-5">
-                <button
-                  onClick={() => window.print()}
-                  className="hidden sm:flex text-xs font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3.5 py-2 rounded-lg items-center gap-1.5 transition-colors"
-                >
-                  <FileText className="w-4 h-4 text-slate-500" /> Report
-                </button>
+              <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
+                {/* Desktop Quick Actions */}
+                <div className="hidden sm:flex items-center gap-2">
+                  {selectedCredit.phone && (
+                    <>
+                      <a
+                        href={`https://wa.me/${selectedCredit.phone.replace(/\D/g, '').length === 10 ? '91' + selectedCredit.phone.replace(/\D/g, '') : selectedCredit.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Dear ${selectedCredit.partyName}, gentle reminder from Cashbook: your pending balance is ₹${selectedCredit.balanceDue.toLocaleString('en-IN')}. Thank you!`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold text-emerald-700 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 px-3 py-2 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Send WhatsApp Reminder"
+                      >
+                        <MessageCircle className="w-4 h-4" /> WhatsApp
+                      </a>
+                      <a
+                        href={`tel:${selectedCredit.phone}`}
+                        className="text-xs font-semibold text-blue-700 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Call Customer"
+                      >
+                        <Phone className="w-4 h-4" /> Call
+                      </a>
+                    </>
+                  )}
+                  <button
+                    onClick={() => window.print()}
+                    className="text-xs font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4 text-slate-500" /> Report
+                  </button>
+                </div>
 
                 <div className="w-full sm:w-auto text-right bg-slate-50 sm:bg-transparent p-2.5 sm:p-0 rounded-xl sm:rounded-none sm:border-l sm:border-slate-200 sm:pl-5 flex sm:block items-center justify-between">
                   <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">

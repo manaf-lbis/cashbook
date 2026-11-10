@@ -5,6 +5,7 @@ import { ToastProvider } from './context/ToastContext';
 import { AccountProvider } from './context/AccountContext';
 import { AuthProvider } from './context/AuthContext';
 import { PwaProvider } from './context/PwaContext';
+import { DayStatusProvider } from './context/DayStatusContext';
 
 export const App: React.FC = () => {
   return (
@@ -12,7 +13,9 @@ export const App: React.FC = () => {
       <PwaProvider>
         <AuthProvider>
           <AccountProvider>
-            <RouterProvider router={router} />
+            <DayStatusProvider>
+              <RouterProvider router={router} />
+            </DayStatusProvider>
           </AccountProvider>
         </AuthProvider>
       </PwaProvider>
