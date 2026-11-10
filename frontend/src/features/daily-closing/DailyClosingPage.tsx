@@ -19,6 +19,8 @@ import {
   History,
   Edit2,
   Check,
+  Lock,
+  RotateCcw,
 } from 'lucide-react';
 import { apiClient, formatINR, formatDate, getLocalDateString, addDaysToDateString } from '../../api/client';
 import {
@@ -27,6 +29,7 @@ import {
   ApiResponse,
 } from '../../types';
 import { Button } from '../../components/ui/Button';
+import { Modal } from '../../components/ui/Modal';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useToast } from '../../context/ToastContext';
 import { DetailedHistoryView } from './components/DetailedHistoryView';
@@ -48,10 +51,16 @@ export const DailyClosingPage: React.FC = () => {
 
   // Form states
   const [openingBalance, setOpeningBalance] = useState<number>(0);
-  const [isEditingOpening, setIsEditingOpening] = useState(false);
-  const [tempOpeningBalance, setTempOpeningBalance] = useState<string>('0');
   const [manualSplitUps, setManualSplitUps] = useState<IManualCashSplitUp[]>([]);
   const [notes, setNotes] = useState<string>('');
+
+  // After-closing night activity modal state
+  const [isMarkingAfterClosing, setIsMarkingAfterClosing] = useState(false);
+  const [adjType, setAdjType] = useState<'EXPENSE' | 'COLLECTION'>('EXPENSE');
+  const [adjTitle, setAdjTitle] = useState('');
+  const [adjAmount, setAdjAmount] = useState('');
+  const [adjCategory, setAdjCategory] = useState('General');
+  const [savingAdj, setSavingAdj] = useState(false);
 
   // Customizable Quick Add Presets State (Persisted in localStorage)
   const [quickPresets, setQuickPresets] = useState<string[]>(() => {
@@ -68,30 +77,41 @@ export const DailyClosingPage: React.FC = () => {
   const [saveForLater, setSaveForLater] = useState(true);
 
   // Fetch live summary for selected date
-  const fetchSummary = useCallback(async (dateStr: string) => {
-    try {
-      setLoading(true);
-      const res = await apiClient.get<ApiResponse<IDailyClosingSummary>>(
-        `/daily-closing/summary?date=${dateStr}`
-      );
-      if (res.data.success && res.data.data) {
-        const data = res.data.data;
-        setSummary(data);
-        setOpeningBalance(data.openingBalance);
-        setTempOpeningBalance(data.openingBalance.toString());
-        setManualSplitUps(
-          data.existingClosing?.manualSplitUps?.length
-            ? data.existingClosing.manualSplitUps
-            : data.defaultSplitUps || [{ sourceName: 'Cash Drawer', amount: 0 }]
+  const fetchSummary = useCallback(
+    async (dateStr: string, preserveReset = false) => {
+      try {
+        setLoading(true);
+        const res = await apiClient.get<ApiResponse<IDailyClosingSummary>>(
+          `/daily-closing/summary?date=${dateStr}`
         );
-        setNotes(data.existingClosing?.notes || '');
+        if (res.data.success && res.data.data) {
+          const data = res.data.data;
+          setSummary(data);
+          setOpeningBalance(data.openingBalance);
+
+          if (!preserveReset) {
+            // Counted input fields: initialize cleanly with 0 or saved if already closed
+            const initialSplitUps = data.existingClosing?.manualSplitUps?.length
+              ? data.existingClosing.manualSplitUps.map((s) => ({
+                  sourceName: s.sourceName,
+                  amount: data.isAlreadyClosed ? s.amount : 0,
+                  notes: s.notes,
+                }))
+              : data.defaultSplitUps?.map((s) => ({ ...s, amount: 0 })) || [
+                  { sourceName: 'Cash Drawer', amount: 0 },
+                ];
+            setManualSplitUps(initialSplitUps);
+            setNotes(data.existingClosing?.notes || '');
+          }
+        }
+      } catch (err: any) {
+        showToast(err.message || 'Failed to load day summary', 'error');
+      } finally {
+        setLoading(false);
       }
-    } catch (err: any) {
-      showToast(err.message || 'Failed to load day summary', 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [showToast]);
+    },
+    [showToast]
+  );
 
   useEffect(() => {
     fetchSummary(selectedDate);
@@ -192,6 +212,12 @@ export const DailyClosingPage: React.FC = () => {
     showToast(`Removed "${nameToRemove}" from Quick Add area`, 'info');
   };
 
+  // Reset all counted input fields to zero
+  const handleResetCountedCash = () => {
+    setManualSplitUps((prev) => prev.map((s) => ({ ...s, amount: 0 })));
+    showToast('Counted cash input fields reset to zero', 'info');
+  };
+
   // Save Daily Closing
   const handleSaveClosing = async () => {
     const hasEmpty = manualSplitUps.some((s) => !s.sourceName.trim());
@@ -227,12 +253,55 @@ export const DailyClosingPage: React.FC = () => {
             'warning'
           );
         }
-        await fetchSummary(selectedDate);
+        // RESET all counted input field cash after save!
+        setManualSplitUps((prev) => prev.map((item) => ({ ...item, amount: 0 })));
+        setNotes('');
+        await fetchSummary(selectedDate, true /* preserveReset */);
       }
     } catch (err: any) {
       showToast(err.message || 'Failed to save day closing', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Record an After-Closing Night Expense / Collection for Opening Reconciliation
+  const handleSaveAfterClosingAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseFloat(adjAmount);
+    if (!amt || amt <= 0) {
+      showToast('Please enter a valid amount', 'error');
+      return;
+    }
+    if (!adjTitle.trim()) {
+      showToast('Please enter a description/reason', 'error');
+      return;
+    }
+
+    try {
+      setSavingAdj(true);
+      const res = await apiClient.post('/daily-closing/after-closing-adjustment', {
+        dateStr: selectedDate,
+        type: adjType,
+        title: adjTitle.trim(),
+        amount: amt,
+        category: adjCategory,
+        remarks: 'After-closing adjustment for opening reconciliation',
+      });
+      if (res.data.success) {
+        showToast(
+          `✅ After-closing ${adjType.toLowerCase()} of ₹${amt.toLocaleString('en-IN')} recorded & reconciled!`,
+          'success'
+        );
+        setIsMarkingAfterClosing(false);
+        setAdjTitle('');
+        setAdjAmount('');
+        await fetchSummary(selectedDate);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to record adjustment', 'error');
+    } finally {
+      setSavingAdj(false);
     }
   };
 
@@ -373,50 +442,78 @@ export const DailyClosingPage: React.FC = () => {
                         <span className="text-xs text-slate-400 font-medium">{formatDate(selectedDate)}</span>
                       </div>
 
-                      {/* Opening Liquid Cash Row */}
-                      <div className="mt-4 p-3.5 bg-slate-50/80 rounded-xl border border-slate-200 flex items-center justify-between">
-                        <div>
-                          <span className="text-xs text-slate-500 font-medium block">Starting Liquid Cash</span>
-                          {isEditingOpening ? (
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-slate-400 font-mono text-sm">₹</span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                value={tempOpeningBalance}
-                                onChange={(e) => setTempOpeningBalance(e.target.value)}
-                                className="w-32 px-2 py-1 text-sm font-mono font-bold bg-white border border-slate-300 rounded-md outline-none"
-                                autoFocus
-                              />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOpeningBalance(parseFloat(tempOpeningBalance) || 0);
-                                  setIsEditingOpening(false);
-                                }}
-                                className="p-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 cursor-pointer"
-                                title="Apply"
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-lg font-black font-mono text-slate-900 block mt-0.5">
-                              ₹{openingBalance.toLocaleString('en-IN')}
+                      {/* Opening Liquid Cash Reconciliation Box (Strictly Non-Editable) */}
+                      <div className="mt-4 p-3.5 sm:p-4 bg-slate-50/90 rounded-xl border border-slate-200/90 space-y-2.5">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-200/70">
+                          <div>
+                            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                              <Lock className="w-3.5 h-3.5 text-slate-500" />
+                              Starting Liquid Cash
                             </span>
+                            <span className="text-[11px] text-slate-400 block mt-0.5">
+                              System reconciled from yesterday's closing cash
+                            </span>
+                          </div>
+                          <span className="text-lg sm:text-xl font-black font-mono text-slate-900">
+                            ₹{openingBalance.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+
+                        {/* Reconciliation Sub-Breakdown */}
+                        <div className="space-y-1.5 text-xs">
+                          {/* 1. Base from Yesterday's Close */}
+                          <div className="flex items-center justify-between text-slate-600 bg-white p-2 rounded-lg border border-slate-100">
+                            <span className="flex items-center gap-1.5 font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                              Yesterday's Counted Close:
+                            </span>
+                            <span className="font-mono font-bold text-slate-800">
+                              ₹{(
+                                summary?.previousClosingCountedCash ??
+                                summary?.previousClosing?.actualClosingBalance ??
+                                0
+                              ).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+
+                          {/* 2. After-Closing Night Expenses */}
+                          {(summary?.afterClosingActivity?.totalExpenses || 0) > 0 && (
+                            <div className="flex items-center justify-between text-rose-700 bg-rose-50/70 p-2 rounded-lg border border-rose-100">
+                              <span className="flex items-center gap-1.5 font-medium">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                                Night Expenses After Close (-):
+                              </span>
+                              <span className="font-mono font-bold">
+                                -₹{(summary?.afterClosingActivity?.totalExpenses || 0).toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* 3. After-Closing Collections */}
+                          {(summary?.afterClosingActivity?.totalCollections || 0) > 0 && (
+                            <div className="flex items-center justify-between text-emerald-700 bg-emerald-50/70 p-2 rounded-lg border border-emerald-100">
+                              <span className="flex items-center gap-1.5 font-medium">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                Night Collections (+):
+                              </span>
+                              <span className="font-mono font-bold">
+                                +₹{(summary?.afterClosingActivity?.totalCollections || 0).toLocaleString('en-IN')}
+                              </span>
+                            </div>
                           )}
                         </div>
 
-                        {!isEditingOpening && (
+                        {/* Button to Mark Night Expense / Collection */}
+                        <div className="pt-1 flex items-center justify-between">
+                          <span className="text-[11px] text-slate-400">Night expense after closing?</span>
                           <button
                             type="button"
-                            onClick={() => setIsEditingOpening(true)}
-                            className="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 cursor-pointer p-1.5 rounded-lg hover:bg-blue-50"
+                            onClick={() => setIsMarkingAfterClosing(true)}
+                            className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 transition-colors flex items-center gap-1 cursor-pointer"
                           >
-                            <Edit2 className="w-3.5 h-3.5" /> Edit
+                            <Plus className="w-3.5 h-3.5" /> Mark Night Expense
                           </button>
-                        )}
+                        </div>
                       </div>
 
                       {/* Today's Transactions Simple List */}
@@ -667,7 +764,7 @@ export const DailyClosingPage: React.FC = () => {
                         ))}
                       </div>
 
-                      <div className="mt-3">
+                      <div className="mt-3 flex items-center justify-between">
                         <Button
                           type="button"
                           variant="outline"
@@ -676,8 +773,17 @@ export const DailyClosingPage: React.FC = () => {
                           leftIcon={<Plus className="w-3.5 h-3.5" />}
                           className="text-xs font-bold text-blue-600 border-blue-200 bg-blue-50/50 hover:bg-blue-50"
                         >
-                          + Add Another Cash / Bank Field
+                          + Add Field
                         </Button>
+
+                        <button
+                          type="button"
+                          onClick={handleResetCountedCash}
+                          className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                          title="Reset all counted cash inputs to 0"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" /> Reset Counts
+                        </button>
                       </div>
                     </div>
 
@@ -685,7 +791,9 @@ export const DailyClosingPage: React.FC = () => {
                     <div className="p-4 rounded-xl bg-slate-900 text-white flex items-center justify-between mt-4">
                       <div>
                         <span className="text-xs text-slate-400 font-semibold block">Total Counted Cash</span>
-                        <span className="text-xs text-slate-500">Sum of above accounts</span>
+                        <span className="text-[11px] text-slate-400">
+                          {summary?.isAlreadyClosed ? 'Saved closing count' : 'Becomes tomorrow’s opening starting cash'}
+                        </span>
                       </div>
                       <span className="text-xl font-black font-mono text-emerald-400">
                         ₹{actualClosingBalance.toLocaleString('en-IN')}
@@ -764,6 +872,122 @@ export const DailyClosingPage: React.FC = () => {
               </>
             )}
           </>
+        )}
+
+        {/* Modal: Mark After-Closing Night Activity for Opening Reconciliation */}
+        {isMarkingAfterClosing && (
+          <Modal
+            isOpen={isMarkingAfterClosing}
+            onClose={() => setIsMarkingAfterClosing(false)}
+            title="Mark Night Expense / Collection"
+            maxWidth="md"
+          >
+            <form onSubmit={handleSaveAfterClosingAdjustment} className="space-y-4">
+              <p className="text-xs text-slate-500">
+                Record an expense or collection that occurred after closing yesterday's book. This automatically reconciles this morning's starting liquid cash without altering yesterday's historical closing balance.
+              </p>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Adjustment Type</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAdjType('EXPENSE')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      adjType === 'EXPENSE'
+                        ? 'bg-rose-50 border-rose-300 text-rose-700 shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Receipt className="w-3.5 h-3.5" /> Expense (-) Outflow
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdjType('COLLECTION')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      adjType === 'COLLECTION'
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Wallet className="w-3.5 h-3.5" /> Collection (+) Inflow
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Description / Title <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Night dinner, milk delivery, emergency shop supplies..."
+                  value={adjTitle}
+                  onChange={(e) => setAdjTitle(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg outline-none focus:border-blue-500 font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Amount (₹) <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">
+                      ₹
+                    </span>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="any"
+                      required
+                      placeholder="0.00"
+                      value={adjAmount}
+                      onChange={(e) => setAdjAmount(e.target.value)}
+                      className="w-full pl-7 pr-3 py-2 text-xs bg-white border border-slate-300 rounded-lg outline-none focus:border-blue-500 font-mono font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Category</label>
+                  <select
+                    value={adjCategory}
+                    onChange={(e) => setAdjCategory(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg outline-none focus:border-blue-500 font-semibold text-slate-700"
+                  >
+                    <option value="General">General</option>
+                    <option value="Food & Refreshments">Food & Refreshments</option>
+                    <option value="Transportation">Transportation</option>
+                    <option value="Shop Supplies">Shop Supplies</option>
+                    <option value="Maintenance">Maintenance</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsMarkingAfterClosing(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant={adjType === 'EXPENSE' ? 'danger' : 'success'}
+                  isLoading={savingAdj}
+                >
+                  Save & Reconcile
+                </Button>
+              </div>
+            </form>
+          </Modal>
         )}
       </div>
     </div>

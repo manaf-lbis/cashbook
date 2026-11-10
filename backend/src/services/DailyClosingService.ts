@@ -9,12 +9,16 @@ import { CreditCardTransactionModel } from '../models/CreditCardTransaction';
 import { CreditCardModel } from '../models/CreditCard';
 import { PayableModel } from '../models/Payable';
 import { AccountModel } from '../models/Account';
+import { BillerModel } from '../models/Biller';
 import { ApiError } from '../utils/ApiError';
 import { CreditTransactionType, CreditCardTransactionType } from '../constants/enums';
 
 export interface SaveDailyClosingDTO {
   date: string; // 'YYYY-MM-DD'
   openingBalance: number;
+  previousClosingCash?: number;
+  afterClosingExpenses?: number;
+  afterClosingCollections?: number;
   dayBookSales: number;
   customerNet: number;
   customerRepayments: number;
@@ -38,6 +42,7 @@ export class DailyClosingService {
    * Fetches real-time computed stats for the given date (default today),
    * along with previous day's closing balance (which serves as today's opening balance),
    * detailed breakdowns of each book, and any existing saved closing record.
+   * Optimised with parallel non-blocking queries and lean memory footprint.
    */
   async getLiveDaySummary(dateStr: string) {
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
@@ -47,22 +52,78 @@ export class DailyClosingService {
     const startOfDay = getStartOfDayIST(dateStr);
     const endOfDay = getEndOfDayIST(dateStr);
 
-    // 1. Check if record already saved for this date
-    const existingClosing = await this.closingRepo.findByDate(dateStr);
+    // 1. Parallel: find existing closing record and previous closing record
+    const [existingClosing, previousClosing] = await Promise.all([
+      this.closingRepo.findByDate(dateStr),
+      this.closingRepo.findPreviousClosing(dateStr),
+    ]);
 
-    // 2. Continuity: find previous closing balance (to automatically set today's opening balance)
-    const previousClosing = await this.closingRepo.findPreviousClosing(dateStr);
-    const suggestedOpeningBalance = previousClosing ? previousClosing.actualClosingBalance : 0;
+    const previousClosingCountedCash = previousClosing ? previousClosing.actualClosingBalance : 0;
+    const prevCloseTime = previousClosing?.closedAt
+      ? new Date(previousClosing.closedAt)
+      : previousClosing
+      ? getEndOfDayIST(previousClosing.date)
+      : null;
 
-    // 3. DAY BOOK: Total sales and biller-wise breakdown for this date
-    const dayBookEntries = await DayBookEntryModel.find({
-      date: { $gte: startOfDay, $lte: endOfDay },
-      isDeleted: { $ne: true },
-    }).populate('billerId', 'name role').populate('accountId', 'name');
+    // 2. Parallel: Execute all ledger queries concurrently with .lean() to minimise server memory and CPU
+    const [
+      dayBookEntries,
+      creditsWithEntries,
+      allDayExpenses,
+      cardTransactions,
+      accounts,
+      nightExpenses,
+    ] = await Promise.all([
+      // Day Book: Sales today
+      DayBookEntryModel.find({
+        date: { $gte: startOfDay, $lte: endOfDay },
+        isDeleted: { $ne: true },
+      })
+        .select('billerId accountId amount date remarks billNumber')
+        .populate('billerId', 'name role')
+        .populate('accountId', 'name')
+        .lean(),
 
+      // Customer Book: Transactions today
+      CreditModel.find({
+        'entries.date': { $gte: startOfDay, $lte: endOfDay },
+      })
+        .select('partyName entries')
+        .lean(),
+
+      // Expenses today
+      ExpenseModel.find({
+        date: { $gte: startOfDay, $lte: endOfDay },
+        isDeleted: { $ne: true },
+      })
+        .select('title amount category accountId date remarks')
+        .populate('accountId', 'name')
+        .lean(),
+
+      // Credit Card Transactions today
+      CreditCardTransactionModel.find({
+        date: { $gte: startOfDay, $lte: endOfDay },
+      })
+        .populate('cardId', 'cardName bankName last4Digits')
+        .lean(),
+
+      // Active Accounts for split-up defaults
+      AccountModel.find({ isActive: true }).select('name balance').lean(),
+
+      // After-closing night expenses between yesterday's close and today's start
+      prevCloseTime
+        ? ExpenseModel.find({
+            date: { $gt: prevCloseTime, $lt: startOfDay },
+            isDeleted: { $ne: true },
+          })
+            .select('title amount category accountId date remarks')
+            .populate('accountId', 'name')
+            .lean()
+        : Promise.resolve([]),
+    ]);
+
+    // 3. Process Day Book Sales
     const totalDayBookSales = dayBookEntries.reduce((sum, entry) => sum + entry.amount, 0);
-
-    // Group sales by biller
     const billerMap = new Map<string, { billerId: string; billerName: string; totalSales: number; count: number }>();
     for (const entry of dayBookEntries) {
       const biller = entry.billerId as any;
@@ -77,11 +138,7 @@ export class DailyClosingService {
     }
     const billerBreakdown = Array.from(billerMap.values());
 
-    // 4. CUSTOMER BOOK: Today's transactions (repayments received vs credit given)
-    const creditsWithEntries = await CreditModel.find({
-      'entries.date': { $gte: startOfDay, $lte: endOfDay },
-    });
-
+    // 4. Process Customer Book Transactions
     let customerRepayments = 0; // Customer paid us (Cash in: +)
     let customerCreditGiven = 0; // We gave credit (Credit extended: -)
     const customerTransactions: any[] = [];
@@ -108,16 +165,21 @@ export class DailyClosingService {
     }
     const customerNet = customerRepayments - customerCreditGiven;
 
-    // 5. EXPENSE BOOK: Total expenses recorded on this date
-    const expenses = await ExpenseModel.find({
-      date: { $gte: startOfDay, $lte: endOfDay },
-      isDeleted: { $ne: true },
-    }).populate('accountId', 'name');
+    // 5. Separate After-Closing Expenses vs Daytime Expenses
+    const taggedAdjustmentExpenses = allDayExpenses.filter(
+      (e) => e.remarks && /\[After-Closing Adjustment\]/i.test(e.remarks)
+    );
+    const afterClosingExpenses = [...nightExpenses, ...taggedAdjustmentExpenses];
+    const afterClosingExpenseTotal = afterClosingExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
-    const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    // Daytime expenses (excluding after-closing adjustments so they are not subtracted twice)
+    const daytimeExpenses = allDayExpenses.filter(
+      (e) => !e.remarks || !/\[After-Closing Adjustment\]/i.test(e.remarks)
+    );
+    const totalExpenses = daytimeExpenses.reduce((sum, exp) => sum + exp.amount, 0);
 
     const expenseCategoryMap = new Map<string, { category: string; total: number; count: number }>();
-    for (const exp of expenses) {
+    for (const exp of daytimeExpenses) {
       const cat = exp.category || 'General';
       if (!expenseCategoryMap.has(cat)) {
         expenseCategoryMap.set(cat, { category: cat, total: 0, count: 0 });
@@ -128,14 +190,9 @@ export class DailyClosingService {
     }
     const expenseCategoryBreakdown = Array.from(expenseCategoryMap.values());
 
-    // 6. CREDIT CARDS: Today's card transactions (cash drawn/swipe vs payments)
-    const cardTransactions = await CreditCardTransactionModel.find({
-      date: { $gte: startOfDay, $lte: endOfDay },
-    }).populate('cardId', 'cardName bankName last4Digits');
-
-    let creditCardDrawn = 0; // Cash drawn / swipe (inflow: +)
-    let creditCardPayment = 0; // Card bill payment (outflow: -)
-
+    // 6. Process Credit Card Transactions
+    let creditCardDrawn = 0;
+    let creditCardPayment = 0;
     for (const tx of cardTransactions) {
       if (tx.type === CreditCardTransactionType.PURCHASE || tx.type === CreditCardTransactionType.CASH_DRAWN) {
         creditCardDrawn += tx.amount;
@@ -145,8 +202,26 @@ export class DailyClosingService {
     }
     const creditCardNet = creditCardDrawn - creditCardPayment;
 
-    // 7. Suggested Split-Up Sources:
-    // If not saved yet, provide default sources (either from previous day's split-up or active accounts)
+    // 7. Reconciled Opening Balance Calculation
+    // Base is strictly yesterday's closing total counted cash.
+    // Adjusted by any after-closing activity (expenses - / collections +).
+    const afterClosingCollectionTotal = 0; // Reserved for late customer payments
+    const afterClosingCollections: any[] = [];
+
+    const reconciledOpeningBalance = previousClosing
+      ? Math.max(0, previousClosingCountedCash + afterClosingCollectionTotal - afterClosingExpenseTotal)
+      : existingClosing
+      ? existingClosing.openingBalance
+      : 0;
+
+    // Opening balance cannot be edited when previousClosing exists
+    const isOpeningLocked = !!previousClosing;
+    const openingBalance = existingClosing ? existingClosing.openingBalance : reconciledOpeningBalance;
+
+    const expectedClosingBalance =
+      openingBalance + totalDayBookSales + customerNet - totalExpenses + creditCardNet;
+
+    // 8. Split-up sources
     let defaultSplitUps: IManualCashSplitUp[] = [];
     if (existingClosing && existingClosing.manualSplitUps && existingClosing.manualSplitUps.length > 0) {
       defaultSplitUps = existingClosing.manualSplitUps;
@@ -156,34 +231,24 @@ export class DailyClosingService {
         amount: 0,
         notes: s.notes,
       }));
+    } else if (accounts.length > 0) {
+      defaultSplitUps = accounts.map((a) => ({
+        sourceName: a.name,
+        amount: 0,
+      }));
     } else {
-      const accounts = await AccountModel.find({ isActive: true });
-      if (accounts.length > 0) {
-        defaultSplitUps = accounts.map((a) => ({
-          sourceName: a.name,
-          amount: 0,
-        }));
-      } else {
-        defaultSplitUps = [
-          { sourceName: 'Cash Drawer / Counter', amount: 0 },
-          { sourceName: 'Fedbank', amount: 0 },
-          { sourceName: 'SBI', amount: 0 },
-          { sourceName: 'CSC Wallet / Digital', amount: 0 },
-        ];
-      }
+      defaultSplitUps = [
+        { sourceName: 'Cash Drawer / Counter', amount: 0 },
+        { sourceName: 'Fedbank', amount: 0 },
+        { sourceName: 'SBI', amount: 0 },
+        { sourceName: 'CSC Wallet / Digital', amount: 0 },
+      ];
     }
-
-    // Opening balance to use: existing closing value or previous day's closing
-    const openingBalance = existingClosing
-      ? existingClosing.openingBalance
-      : suggestedOpeningBalance;
-
-    const expectedClosingBalance =
-      openingBalance + totalDayBookSales + customerNet - totalExpenses + creditCardNet;
 
     return {
       date: dateStr,
       isAlreadyClosed: !!existingClosing,
+      isOpeningLocked,
       existingClosing,
       previousClosing: previousClosing
         ? {
@@ -191,10 +256,19 @@ export class DailyClosingService {
             actualClosingBalance: previousClosing.actualClosingBalance,
             variance: previousClosing.variance,
             status: previousClosing.status,
+            closedAt: previousClosing.closedAt,
           }
         : null,
       openingBalance,
-      suggestedOpeningBalance,
+      reconciledOpeningBalance,
+      previousClosingCountedCash,
+      afterClosingActivity: {
+        expenses: afterClosingExpenses,
+        totalExpenses: afterClosingExpenseTotal,
+        collections: afterClosingCollections,
+        totalCollections: afterClosingCollectionTotal,
+        netAdjustment: afterClosingCollectionTotal - afterClosingExpenseTotal,
+      },
       dayBook: {
         totalSales: totalDayBookSales,
         totalEntries: dayBookEntries.length,
@@ -210,9 +284,9 @@ export class DailyClosingService {
       },
       expenseBook: {
         totalExpenses,
-        totalEntries: expenses.length,
+        totalEntries: daytimeExpenses.length,
         categoryBreakdown: expenseCategoryBreakdown,
-        expenses: expenses.slice(0, 50),
+        expenses: daytimeExpenses.slice(0, 50),
       },
       creditCardBook: {
         creditCardNet,
@@ -227,8 +301,9 @@ export class DailyClosingService {
   }
 
   /**
-   * Saves or updates the daily closing record with enterprise verification,
-   * calculating variance and alerting if unbalanced.
+   * Saves or updates the daily closing record with enterprise verification.
+   * System strictly enforces starting liquid cash from yesterday's counted close + after-close adjustments.
+   * Client-submitted manual opening balance overrides are ignored when a previous closing exists.
    */
   async saveDailyClosing(dto: SaveDailyClosingDTO) {
     const {
@@ -250,9 +325,51 @@ export class DailyClosingService {
       throw ApiError.badRequest('At least one cash/bank split-up source is required');
     }
 
+    const startOfDay = getStartOfDayIST(date);
+    const endOfDay = getEndOfDayIST(date);
+
+    // 1. Authoritative check of previous closing to prevent starting cash tampering
+    const previousClosing = await this.closingRepo.findPreviousClosing(date);
+    let finalOpeningBalance = openingBalance;
+    let finalPreviousClosingCash = 0;
+    let finalAfterClosingExpenses = 0;
+    let finalAfterClosingCollections = 0;
+
+    if (previousClosing) {
+      finalPreviousClosingCash = previousClosing.actualClosingBalance;
+      const prevCloseTime = previousClosing.closedAt
+        ? new Date(previousClosing.closedAt)
+        : getEndOfDayIST(previousClosing.date);
+
+      const [nightExpenses, taggedExpenses] = await Promise.all([
+        ExpenseModel.find({
+          date: { $gt: prevCloseTime, $lt: startOfDay },
+          isDeleted: { $ne: true },
+        })
+          .select('amount')
+          .lean(),
+        ExpenseModel.find({
+          date: { $gte: startOfDay, $lte: endOfDay },
+          remarks: { $regex: /\[After-Closing Adjustment\]/i },
+          isDeleted: { $ne: true },
+        })
+          .select('amount')
+          .lean(),
+      ]);
+
+      finalAfterClosingExpenses = [...nightExpenses, ...taggedExpenses].reduce(
+        (sum, e) => sum + (e.amount || 0),
+        0
+      );
+      finalOpeningBalance = Math.max(
+        0,
+        finalPreviousClosingCash + finalAfterClosingCollections - finalAfterClosingExpenses
+      );
+    }
+
     // Formula: LC (Opening) + Daybook + Customer Book - Expenses + Credit Card
     const expectedClosingBalance =
-      openingBalance + dayBookSales + customerNet - expenseTotal + creditCardNet;
+      finalOpeningBalance + dayBookSales + customerNet - expenseTotal + creditCardNet;
 
     // Actual sum of all manually entered cash & bank sources
     const actualClosingBalance = manualSplitUps.reduce(
@@ -292,7 +409,10 @@ export class DailyClosingService {
         });
       }
 
-      existing.openingBalance = openingBalance;
+      existing.openingBalance = finalOpeningBalance;
+      existing.previousClosingCash = finalPreviousClosingCash;
+      existing.afterClosingExpenses = finalAfterClosingExpenses;
+      existing.afterClosingCollections = finalAfterClosingCollections;
       existing.dayBookSales = dayBookSales;
       existing.customerNet = customerNet;
       existing.customerRepayments = customerRepayments;
@@ -314,7 +434,10 @@ export class DailyClosingService {
     } else {
       closingRecord = await DailyClosingModel.create({
         date,
-        openingBalance,
+        openingBalance: finalOpeningBalance,
+        previousClosingCash: finalPreviousClosingCash,
+        afterClosingExpenses: finalAfterClosingExpenses,
+        afterClosingCollections: finalAfterClosingCollections,
         dayBookSales,
         customerNet,
         customerRepayments,
@@ -340,6 +463,75 @@ export class DailyClosingService {
       variance,
       warningMessage,
     };
+  }
+
+  /**
+   * Marks an after-closing expense or collection for reconciling the opening register.
+   */
+  async markAfterClosingActivity(data: {
+    dateStr: string;
+    type: 'EXPENSE' | 'COLLECTION';
+    title: string;
+    amount: number;
+    category?: string;
+    accountId?: string;
+    remarks?: string;
+  }) {
+    const { dateStr, type, title, amount, category, accountId, remarks } = data;
+    if (!amount || amount <= 0) {
+      throw ApiError.badRequest('Amount must be positive');
+    }
+
+    let targetAccountId = accountId;
+    if (!targetAccountId) {
+      const cashAcc = await AccountModel.findOne({ name: { $regex: /cash/i }, isActive: true });
+      targetAccountId = cashAcc
+        ? (cashAcc._id as any).toString()
+        : (await AccountModel.findOne({ isActive: true }))?._id?.toString();
+    }
+
+    if (!targetAccountId) {
+      throw ApiError.badRequest('No active account found for transaction');
+    }
+
+    // Set time to early morning 00:01 IST of dateStr
+    const adjustmentDate = dayjs.tz(dateStr, TIMEZONE).hour(0).minute(1).second(0).toDate();
+    const fullRemarks = `${remarks ? remarks.trim() + ' ' : ''}[After-Closing Adjustment]`;
+
+    if (type === 'EXPENSE') {
+      const expense = await ExpenseModel.create({
+        title: title.trim(),
+        amount,
+        category: category?.trim() || 'General',
+        accountId: targetAccountId,
+        date: adjustmentDate,
+        remarks: fullRemarks,
+      });
+
+      await AccountModel.findByIdAndUpdate(targetAccountId, { $inc: { balance: -amount } });
+      return { success: true, record: expense };
+    } else {
+      let biller = await BillerModel.findOne({ isActive: true });
+      if (!biller) {
+        biller = await BillerModel.findOne();
+      }
+      if (!biller) {
+        biller = await BillerModel.create({ name: 'General Staff', role: 'Staff' });
+      }
+
+      const entry = await DayBookEntryModel.create({
+        billerId: biller._id,
+        amount,
+        accountId: targetAccountId,
+        date: adjustmentDate,
+        monthKey: dayjs(adjustmentDate).format('YYYY-MM'),
+        remarks: fullRemarks,
+        customerName: 'After-Closing Collection',
+        paymentMode: 'CASH',
+      });
+      await AccountModel.findByIdAndUpdate(targetAccountId, { $inc: { balance: amount } });
+      return { success: true, record: entry };
+    }
   }
 
   /**

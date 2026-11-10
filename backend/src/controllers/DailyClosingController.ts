@@ -54,4 +54,13 @@ export class DailyClosingController {
       next(err);
     }
   };
+
+  markAfterClosingActivity = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await this.closingService.markAfterClosingActivity(req.body);
+      return ApiResponse.success(res, result, 'After-closing adjustment recorded successfully', 201);
+    } catch (err) {
+      next(err);
+    }
+  };
 }

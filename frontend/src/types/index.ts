@@ -352,15 +352,26 @@ export interface IDailyClosing {
 export interface IDailyClosingSummary {
   date: string;
   isAlreadyClosed: boolean;
+  isOpeningLocked?: boolean;
   existingClosing: IDailyClosing | null;
   previousClosing: {
     date: string;
     actualClosingBalance: number;
     variance: number;
     status: 'BALANCED' | 'DISCREPANCY';
+    closedAt?: string;
   } | null;
   openingBalance: number;
-  suggestedOpeningBalance: number;
+  reconciledOpeningBalance?: number;
+  previousClosingCountedCash?: number;
+  afterClosingActivity?: {
+    expenses: any[];
+    totalExpenses: number;
+    collections: any[];
+    totalCollections: number;
+    netAdjustment: number;
+  };
+  suggestedOpeningBalance?: number;
   dayBook: {
     totalSales: number;
     totalEntries: number;

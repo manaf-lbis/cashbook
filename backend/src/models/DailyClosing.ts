@@ -9,6 +9,9 @@ export interface IManualCashSplitUp {
 export interface IDailyClosing extends Document {
   date: string; // Format 'YYYY-MM-DD'
   openingBalance: number; // Liquid cash declared / carried from previous closing
+  previousClosingCash?: number; // Counted cash from previous day's close
+  afterClosingExpenses?: number; // Expenses that occurred after previous day close
+  afterClosingCollections?: number; // Collections that occurred after previous day close
   dayBookSales: number; // Total sales today from all billers
   customerNet: number; // Net from customers book (+ repayments - given)
   customerRepayments: number; // Customer payments received (+)
@@ -50,6 +53,9 @@ const DailyClosingSchema = new Schema<IDailyClosing>(
   {
     date: { type: String, required: true, unique: true, index: true },
     openingBalance: { type: Number, required: true, default: 0 },
+    previousClosingCash: { type: Number, default: 0 },
+    afterClosingExpenses: { type: Number, default: 0 },
+    afterClosingCollections: { type: Number, default: 0 },
     dayBookSales: { type: Number, required: true, default: 0 },
     customerNet: { type: Number, required: true, default: 0 },
     customerRepayments: { type: Number, required: true, default: 0 },
