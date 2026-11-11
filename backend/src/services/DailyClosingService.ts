@@ -324,7 +324,16 @@ export class DailyClosingService {
     }
     const creditCardNet = creditCardDrawn - creditCardPayment;
 
-    // 8. Reconciled Opening Balance Calculation (Strictly Non-Editable once opened or backed by history)
+    // 8. Account Liquid Breakdown (Cash in Hand & Bank Balances)
+    let systemCashInHand = 0;
+    let systemBankBalances = 0;
+    for (const acc of accounts) {
+      if (acc.type === 'CASH') systemCashInHand += acc.balance || 0;
+      else systemBankBalances += acc.balance || 0;
+    }
+    const systemTotalLiquid = systemCashInHand + systemBankBalances;
+
+    // 9. Reconciled Opening Balance Calculation (Strictly Non-Editable once opened or backed by history)
     let missedDaysCarryForward = 0;
     let baseCarryForward = previousClosingCountedCash;
 
@@ -346,24 +355,15 @@ export class DailyClosingService {
         ? Math.max(0, baseCarryForward + afterClosingCollectionTotal - afterClosingExpenseTotal)
         : existingClosing
         ? existingClosing.openingBalance
-        : 0;
+        : systemTotalLiquid;
 
     // Starting liquid cash is ALWAYS locked once day is opened OR when prior closed/opened records exist
     const isOpeningLocked = isOpened || !!(previousClosed || previousAnyRecord?.isOpened);
     const openingBalance = isOpened && existingClosing ? existingClosing.openingBalance : reconciledOpeningBalance;
 
-    // Expected Liquid Closing Cash (matches Physical Cash & Bank Balances)
+    // Expected Liquid Closing Cash: Opening + Sales + Customer Collection (Get - Give) - Expenses + Card Net
     const expectedClosingBalance =
-      openingBalance + totalDayBookSales + customerCashNetToday - totalExpenses + creditCardNet;
-
-    // 9. Account Liquid Breakdown & 6 Core Financial Position Fields
-    let systemCashInHand = 0;
-    let systemBankBalances = 0;
-    for (const acc of accounts) {
-      if (acc.type === 'CASH') systemCashInHand += acc.balance || 0;
-      else systemBankBalances += acc.balance || 0;
-    }
-    const systemTotalLiquid = systemCashInHand + systemBankBalances;
+      openingBalance + totalDayBookSales + customerCollectionNet - totalExpenses + creditCardNet;
 
     // Total Amount We Need to Get & Give across entire ledger
     const amountToGet = customerToGet + supplierToGet;
@@ -374,8 +374,12 @@ export class DailyClosingService {
       ? existingClosing.actualClosingBalance
       : expectedClosingBalance;
 
-    const grossAmount = effectiveLiquidAmount + amountToGet;
-    const netAmount = effectiveLiquidAmount + amountToGet - amountToGive;
+    // User's exact definitions:
+    // 1. Total Cash Available (Liquid Cash) = Old bank accounts + cash drawer everywhere
+    // 2. Gross Amount ≈ Total Cash Available
+    // 3. Net Amount = Total Cash Available - All Expenses - All Cash We Need to Give
+    const grossAmount = effectiveLiquidAmount;
+    const netAmount = effectiveLiquidAmount - totalExpenses - amountToGive;
 
     // 10. Default Split-Up Sources
     let defaultSplitUps: IManualCashSplitUp[] = [];
@@ -443,7 +447,7 @@ export class DailyClosingService {
         entries: dayBookEntries.slice(0, 50),
       },
       customerBook: {
-        customerNet: customerCashNetToday, // Today's cash impact
+        customerNet: customerCollectionNet, // Customer Collection (Get - Give)
         totalRepayments: customerRepayments,
         totalCreditGiven: customerCreditGiven,
         customerToGet,
@@ -482,6 +486,54 @@ export class DailyClosingService {
         netAmount,
         // Formula clarity: Opening + (Customer Get - Give)
         openingWithCustomerNet: openingBalance + customerCollectionNet,
+      },
+      // Daily Milestone & Reconciliation Cycle (Yesterday Close -> Today Opening -> Today Closing)
+      milestoneCycle: {
+        yesterdayClosing: {
+          date: previousClosed?.date || null,
+          countedCash: previousClosingCountedCash,
+        },
+        openingMilestone: {
+          isOpened,
+          openedAt: existingClosing?.openedAt || null,
+          openingBalance,
+          openingCountedBalance: existingClosing?.openingCountedBalance ?? openingBalance,
+          openingExpectedBalance: existingClosing?.openingExpectedBalance ?? reconciledOpeningBalance,
+          variance: existingClosing?.openingVariance ?? 0,
+          grossAmount: existingClosing?.openingGrossAmount ?? (existingClosing?.openingCountedBalance ?? openingBalance),
+          netAmount:
+            existingClosing?.openingNetAmount ??
+            (existingClosing?.openingCountedBalance ?? openingBalance) - amountToGive,
+          status:
+            (existingClosing?.openingVariance ?? 0) === 0 || Math.abs(existingClosing?.openingVariance || 0) < 0.01
+              ? ('BALANCED' as const)
+              : ('DISCREPANCY' as const),
+        },
+        closingMilestone: {
+          isClosed,
+          closedAt: existingClosing?.closedAt || null,
+          expectedClosingBalance,
+          actualClosingBalance: existingClosing?.actualClosingBalance ?? 0,
+          variance: existingClosing?.variance ?? 0,
+          grossAmount:
+            existingClosing?.closingGrossAmount ?? (existingClosing?.actualClosingBalance ?? grossAmount),
+          netAmount:
+            existingClosing?.closingNetAmount ??
+            ((existingClosing?.actualClosingBalance ?? 0) - totalExpenses - amountToGive),
+          status: existingClosing?.status || 'BALANCED',
+        },
+        cycleComparison: {
+          grossGrowth:
+            isClosed && existingClosing
+              ? (existingClosing.closingGrossAmount || existingClosing.actualClosingBalance) -
+                (existingClosing.openingGrossAmount || existingClosing.openingCountedBalance || openingBalance)
+              : grossAmount - (existingClosing?.openingGrossAmount || openingBalance),
+          netGrowth:
+            isClosed && existingClosing
+              ? (existingClosing.closingNetAmount || 0) - (existingClosing.openingNetAmount || 0)
+              : netAmount - (existingClosing?.openingNetAmount || openingBalance - amountToGive),
+          cycleDiscrepancy: isClosed && existingClosing ? existingClosing.variance : 0,
+        },
       },
       expectedClosingBalance,
       defaultSplitUps,
@@ -585,8 +637,10 @@ export class DailyClosingService {
       totalLiquidAmount: openingCountedBalance,
       amountToGet: fp.amountToGet,
       amountToGive: fp.amountToGive,
-      grossAmount: openingCountedBalance + fp.amountToGet,
-      netAmount: openingCountedBalance + fp.amountToGet - fp.amountToGive,
+      grossAmount: openingCountedBalance,
+      netAmount: openingCountedBalance - fp.amountToGive,
+      openingGrossAmount: openingCountedBalance,
+      openingNetAmount: openingCountedBalance - fp.amountToGive,
     });
 
     return {
@@ -631,7 +685,7 @@ export class DailyClosingService {
     const liveSummary = await this.getLiveDaySummary(date, options);
     const authoritativeOpeningBalance = existing.openingBalance;
     const dayBookSales = liveSummary.dayBook.totalSales;
-    const customerCashNetToday = liveSummary.customerBook.customerNet;
+    const customerCollectionNet = liveSummary.customerBook.customerCollectionNet;
     const customerRepayments = liveSummary.customerBook.totalRepayments;
     const customerCreditGiven = liveSummary.customerBook.totalCreditGiven;
     const expenseTotal = liveSummary.expenseBook.totalExpenses;
@@ -639,8 +693,9 @@ export class DailyClosingService {
     const creditCardDrawn = liveSummary.creditCardBook.creditCardDrawn;
     const creditCardPayment = liveSummary.creditCardBook.creditCardPayment;
 
+    // Expected Closing Balance incorporates Customer Collection (Get - Give)
     const expectedClosingBalance =
-      authoritativeOpeningBalance + dayBookSales + customerCashNetToday - expenseTotal + creditCardNet;
+      authoritativeOpeningBalance + dayBookSales + customerCollectionNet - expenseTotal + creditCardNet;
 
     const actualClosingBalance = manualSplitUps.reduce(
       (sum, item) => sum + (Number(item.amount) || 0),
@@ -657,8 +712,12 @@ export class DailyClosingService {
       .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
     const effectiveCashInHand = countedCashInHand > 0 ? countedCashInHand : fp.cashInHand;
 
-    const grossAmount = actualClosingBalance + fp.amountToGet;
-    const netAmount = actualClosingBalance + fp.amountToGet - fp.amountToGive;
+    // User's defined pillars:
+    // 1. Total Cash Available (Liquid Cash) = actualClosingBalance
+    // 2. Gross Amount ≈ Total Cash Available
+    // 3. Net Amount = Total Cash Available - All Expenses - All Cash We Need to Give
+    const grossAmount = actualClosingBalance;
+    const netAmount = actualClosingBalance - expenseTotal - fp.amountToGive;
 
     let warningMessage: string | null = null;
     if (!isBalanced) {
@@ -683,12 +742,12 @@ export class DailyClosingService {
     }
 
     existing.dayBookSales = dayBookSales;
-    existing.customerNet = customerCashNetToday;
+    existing.customerNet = customerCollectionNet;
     existing.customerRepayments = customerRepayments;
     existing.customerCreditGiven = customerCreditGiven;
     existing.customerToGet = liveSummary.customerBook.customerToGet;
     existing.customerToGive = liveSummary.customerBook.customerToGive;
-    existing.customerCollectionNet = liveSummary.customerBook.customerCollectionNet;
+    existing.customerCollectionNet = customerCollectionNet;
     existing.expenseTotal = expenseTotal;
     existing.creditCardNet = creditCardNet;
     existing.creditCardDrawn = creditCardDrawn;
@@ -707,6 +766,8 @@ export class DailyClosingService {
     existing.amountToGive = fp.amountToGive;
     existing.grossAmount = grossAmount;
     existing.netAmount = netAmount;
+    existing.closingGrossAmount = grossAmount;
+    existing.closingNetAmount = netAmount;
     existing.editLogs = editLogs;
 
     const closingRecord = await existing.save();

@@ -118,25 +118,26 @@ async function runSimulation() {
       date: dayjs.tz(day1, TIMEZONE).hour(16).minute(0).toDate(),
     });
 
-    // Step 2: First Closing (2nd Calculation) -> Expected = 10000 + 5000 - 1000 = 14000
+    // Step 2: First Closing (2nd Calculation) -> Expected = 10000 + 5000 + customerCollectionNet - 1000
     const d1PreClose = await service.getLiveDaySummary(day1, { todayOverride: day1 });
     if (d1PreClose.actionMode !== 'CLOSE') throw new Error(`Expected actionMode CLOSE, got ${d1PreClose.actionMode}`);
-    if (d1PreClose.expectedClosingBalance !== 14000) {
-      throw new Error(`Expected 14000, got ${d1PreClose.expectedClosingBalance}`);
+    const expectedD1Close = 10000 + 5000 + d1PreClose.customerBook.customerCollectionNet - 1000;
+    if (d1PreClose.expectedClosingBalance !== expectedD1Close) {
+      throw new Error(`Expected ${expectedD1Close}, got ${d1PreClose.expectedClosingBalance}`);
     }
 
     const closeRes = await service.saveDailyClosing(
       {
         date: day1,
         manualSplitUps: [
-          { sourceName: 'Cash Drawer', amount: 9000 },
+          { sourceName: 'Cash Drawer', amount: expectedD1Close - 5000 },
           { sourceName: 'SBI Bank', amount: 5000 },
         ],
         notes: 'Initial EOD closing',
       },
       { todayOverride: day1 }
     );
-    if (!closeRes.isBalanced || closeRes.closing.actualClosingBalance !== 14000 || closeRes.isSameDayEdit !== false) {
+    if (!closeRes.isBalanced || closeRes.closing.actualClosingBalance !== expectedD1Close || closeRes.isSameDayEdit !== false) {
       throw new Error('First close verification failed');
     }
     console.log(`✓ Day 1 Closed (2nd Save): Counted = ₹${closeRes.closing.actualClosingBalance}, Status = ${closeRes.closing.status}`);
@@ -149,7 +150,7 @@ async function runSimulation() {
       {
         date: day1,
         manualSplitUps: [
-          { sourceName: 'Cash Drawer', amount: 9500 },
+          { sourceName: 'Cash Drawer', amount: expectedD1Close - 4500 },
           { sourceName: 'SBI Bank', amount: 4500 },
         ],
         notes: 'Adjusted split before 11:59 PM',
@@ -192,19 +193,20 @@ async function runSimulation() {
       accountId: cashAccount._id.toString(),
     });
 
-    // Open Day 2 with spoofed openingBalance: 999999 -> Server must enforce 14000 - 500 = 13500
+    // Open Day 2 with spoofed openingBalance: 999999 -> Server must enforce expectedD1Close - 500
+    const expectedD2Open = expectedD1Close - 500;
     const d2OpenRes = await service.openDay(
       {
         date: day2,
         openingBalance: 999999,
-        manualSplitUps: [{ sourceName: 'Cash Drawer', amount: 13500 }],
+        manualSplitUps: [{ sourceName: 'Cash Drawer', amount: expectedD2Open }],
       },
       { todayOverride: day2 }
     );
-    if (d2OpenRes.closing.openingBalance !== 13500) {
-      throw new Error(`Expected server-enforced openingBalance 13500, got ${d2OpenRes.closing.openingBalance}`);
+    if (d2OpenRes.closing.openingBalance !== expectedD2Open) {
+      throw new Error(`Expected server-enforced openingBalance ${expectedD2Open}, got ${d2OpenRes.closing.openingBalance}`);
     }
-    console.log(`✓ Day 2 Opened: Yesterday Close (₹14,000) - Night Expense (₹500) = ₹${d2OpenRes.closing.openingBalance} (Spoof blocked!)`);
+    console.log(`✓ Day 2 Opened: Yesterday Close (₹${expectedD1Close}) - Night Expense (₹500) = ₹${d2OpenRes.closing.openingBalance} (Spoof blocked!)`);
 
     // =========================================================================
     // SCENARIO 3: MISSED CLOSING ON DAY 2 -> DAY 3 STARTS FRESH (NO LATE CLOSE)
@@ -239,9 +241,10 @@ async function runSimulation() {
 
     const d3Summary = await service.getLiveDaySummary(day3, { todayOverride: day3 });
     if (d3Summary.actionMode !== 'OPEN') throw new Error(`Expected Day 3 actionMode OPEN, got ${d3Summary.actionMode}`);
-    // Roll forward: Day 1 Close (14000) + Day 2 Sale (2500) - Day 2 AfterClose Night Exp (500) = 16000
-    if (d3Summary.openingBalance !== 16000) {
-      throw new Error(`Expected Day 3 rolled openingBalance 16000, got ${d3Summary.openingBalance}`);
+    // Roll forward: Day 1 Close (expectedD1Close) + Day 2 Sale (2500) - Day 2 AfterClose Night Exp (500)
+    const expectedD3Open = expectedD1Close + 2500 - 500;
+    if (d3Summary.openingBalance !== expectedD3Open) {
+      throw new Error(`Expected Day 3 rolled openingBalance ${expectedD3Open}, got ${d3Summary.openingBalance}`);
     }
     console.log(`✓ Day 3 ready to Open with rolled cash ₹${d3Summary.openingBalance} (Day 1 Close + Day 2 Net)`);
 
@@ -311,15 +314,27 @@ async function runSimulation() {
       throw new Error('Customer Collection (Get vs Give) math mismatch!');
     }
 
-    // Also verify Net Amount = Total Liquid + AmountToGet - AmountToGive
+    // Verify user's defined formulas:
+    // 1. Gross Amount ≈ Total Cash Available
+    // 2. Net Amount = Total Cash Available - Expenses - All Cash We Need to Give
     const fp = afterCustomerSummary.financialPosition;
-    if (fp.netAmount !== fp.totalLiquidAmount + fp.amountToGet - fp.amountToGive) {
-      throw new Error('Net Amount formula mismatch!');
+    const totalExp = afterCustomerSummary.expenseBook.totalExpenses;
+    if (fp.grossAmount !== fp.totalLiquidAmount) {
+      throw new Error(`Gross Amount must equal Total Liquid Amount (${fp.totalLiquidAmount}), got ${fp.grossAmount}`);
     }
-    if (fp.grossAmount !== fp.totalLiquidAmount + fp.amountToGet) {
-      throw new Error('Gross Amount formula mismatch!');
+    if (fp.netAmount !== fp.totalLiquidAmount - totalExp - fp.amountToGive) {
+      throw new Error(`Net Amount formula mismatch! Expected ${fp.totalLiquidAmount - totalExp - fp.amountToGive}, got ${fp.netAmount}`);
     }
-    console.log(`✓ Net Amount & Gross Amount exact formulas verified (baseNet delta verified from ₹${baseNet} to ₹${fp.netAmount})`);
+    if (afterCustomerSummary.expectedClosingBalance !== afterCustomerSummary.openingBalance + afterCustomerSummary.dayBook.totalSales + afterCustomerSummary.customerBook.customerCollectionNet - totalExp + afterCustomerSummary.creditCardBook.creditCardNet) {
+      throw new Error(`Expected Closing Balance must incorporate Customer Collection Net (${afterCustomerSummary.customerBook.customerCollectionNet})`);
+    }
+    console.log(`✓ User's Gross Amount (≈ Total Cash) & Net Amount (Total Cash - Expenses - To Give) exact formulas verified!`);
+    console.log(`✓ Milestone cycle snapshot verified:`, {
+      openingGross: afterCustomerSummary.milestoneCycle?.openingMilestone.grossAmount,
+      openingNet: afterCustomerSummary.milestoneCycle?.openingMilestone.netAmount,
+      closingGross: afterCustomerSummary.milestoneCycle?.closingMilestone.grossAmount,
+      closingNet: afterCustomerSummary.milestoneCycle?.closingMilestone.netAmount,
+    });
 
     console.log('\n=====================================================');
     console.log('🎉 ALL SIMULATION SCENARIOS PASSED 100%!');

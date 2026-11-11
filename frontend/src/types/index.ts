@@ -361,6 +361,10 @@ export interface IDailyClosing {
   amountToGet?: number;
   grossAmount?: number;
   netAmount?: number;
+  openingGrossAmount?: number;
+  openingNetAmount?: number;
+  closingGrossAmount?: number;
+  closingNetAmount?: number;
   editLogs?: Array<{
     editedAt: string;
     previousActual: number;
@@ -457,6 +461,38 @@ export interface IDailyClosingSummary {
     transactions: any[];
   };
   financialPosition: IDailyFinancialPosition;
+  milestoneCycle?: {
+    yesterdayClosing: {
+      date: string | null;
+      countedCash: number;
+    };
+    openingMilestone: {
+      isOpened: boolean;
+      openedAt: string | null;
+      openingBalance: number;
+      openingCountedBalance: number;
+      openingExpectedBalance: number;
+      variance: number;
+      grossAmount: number;
+      netAmount: number;
+      status: 'BALANCED' | 'DISCREPANCY';
+    };
+    closingMilestone: {
+      isClosed: boolean;
+      closedAt: string | null;
+      expectedClosingBalance: number;
+      actualClosingBalance: number;
+      variance: number;
+      grossAmount: number;
+      netAmount: number;
+      status: 'BALANCED' | 'DISCREPANCY';
+    };
+    cycleComparison: {
+      grossGrowth: number;
+      netGrowth: number;
+      cycleDiscrepancy: number;
+    };
+  };
   expectedClosingBalance: number;
   defaultSplitUps: IManualCashSplitUp[];
 }

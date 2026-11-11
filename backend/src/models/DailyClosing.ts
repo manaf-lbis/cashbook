@@ -41,13 +41,17 @@ export interface IDailyClosing extends Document {
   notes?: string;
   isClosed: boolean;
   closedAt?: Date;
-  // 6 Core Daily Financial Tracking Fields
+  // 6 Core Daily Financial Tracking Fields & Milestones
   cashInHand: number;
   totalLiquidAmount: number;
   amountToGive: number;
   amountToGet: number;
   grossAmount: number;
   netAmount: number;
+  openingGrossAmount?: number;
+  openingNetAmount?: number;
+  closingGrossAmount?: number;
+  closingNetAmount?: number;
   editLogs?: Array<{
     editedAt: Date;
     previousActual: number;
@@ -108,6 +112,10 @@ const DailyClosingSchema = new Schema<IDailyClosing>(
     amountToGet: { type: Number, default: 0 },
     grossAmount: { type: Number, default: 0 },
     netAmount: { type: Number, default: 0 },
+    openingGrossAmount: { type: Number, default: 0 },
+    openingNetAmount: { type: Number, default: 0 },
+    closingGrossAmount: { type: Number, default: 0 },
+    closingNetAmount: { type: Number, default: 0 },
     editLogs: [
       {
         editedAt: { type: Date, default: Date.now },

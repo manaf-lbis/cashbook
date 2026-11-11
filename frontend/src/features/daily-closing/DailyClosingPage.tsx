@@ -21,6 +21,7 @@ import {
   Check,
   Lock,
   RotateCcw,
+  ArrowRight,
 } from 'lucide-react';
 import { apiClient, formatINR, formatDate, getLocalDateString, addDaysToDateString } from '../../api/client';
 import {
@@ -141,17 +142,16 @@ export const DailyClosingPage: React.FC = () => {
 
   // Numbers from books
   const dayBookSales = summary?.dayBook?.totalSales || 0;
-  const customerCashNetToday = summary?.customerBook?.customerNet || 0;
   const customerToGet = summary?.customerBook?.customerToGet || 0;
   const customerToGive = summary?.customerBook?.customerToGive || 0;
   const customerCollectionNet = summary?.customerBook?.customerCollectionNet || 0;
   const expenseTotal = summary?.expenseBook?.totalExpenses || 0;
   const creditCardNet = summary?.creditCardBook?.creditCardNet || 0;
 
-  // Expected Liquid Closing Cash = Starting Liquid Cash + Sales + Today Customer Cash Net - Expenses + Card Net
+  // Expected Liquid Closing Cash = Starting Liquid Cash + Sales + Customer Collection (Get - Give) - Expenses + Card Net
   const expectedClosingBalance = useMemo(() => {
-    return openingBalance + dayBookSales + customerCashNetToday - expenseTotal + creditCardNet;
-  }, [openingBalance, dayBookSales, customerCashNetToday, expenseTotal, creditCardNet]);
+    return openingBalance + dayBookSales + customerCollectionNet - expenseTotal + creditCardNet;
+  }, [openingBalance, dayBookSales, customerCollectionNet, expenseTotal, creditCardNet]);
 
   // Actual Counted Cash across all manual split-ups
   const actualClosingBalance = useMemo(() => {
@@ -165,7 +165,7 @@ export const DailyClosingPage: React.FC = () => {
 
   const isBalanced = Math.abs(variance) < 0.01;
 
-  // Dynamic 6 Core Financial Position Calculations (reflecting live count inputs if entered)
+  // Dynamic Core Financial Pillars & Ledger Positions
   const fp = summary?.financialPosition;
   const liveCountedCashInHand = useMemo(() => {
     const cashRows = manualSplitUps.filter((s) => /cash|drawer|counter/i.test(s.sourceName));
@@ -173,6 +173,7 @@ export const DailyClosingPage: React.FC = () => {
     return sum > 0 ? sum : fp?.cashInHand || 0;
   }, [manualSplitUps, fp?.cashInHand]);
 
+  // 1. Total Cash Available (Liquid Cash) = Old bank accounts + cash drawer everywhere
   const displayTotalLiquid =
     actualClosingBalance > 0
       ? actualClosingBalance
@@ -182,8 +183,12 @@ export const DailyClosingPage: React.FC = () => {
 
   const displayAmountToGet = fp?.amountToGet || 0;
   const displayAmountToGive = fp?.amountToGive || 0;
-  const displayGrossAmount = displayTotalLiquid + displayAmountToGet;
-  const displayNetAmount = displayTotalLiquid + displayAmountToGet - displayAmountToGive;
+
+  // 2. Gross Amount ≈ Total Cash Available
+  const displayGrossAmount = displayTotalLiquid;
+
+  // 3. Net Amount = Total Cash Available - All Expenses - All Cash We Need to Give
+  const displayNetAmount = displayTotalLiquid - expenseTotal - displayAmountToGive;
 
   // Split-up handlers
   const handleSplitUpChange = (index: number, field: keyof IManualCashSplitUp, value: any) => {
@@ -296,7 +301,7 @@ export const DailyClosingPage: React.FC = () => {
           date: selectedDate,
           openingBalance,
           dayBookSales,
-          customerNet: customerCashNetToday,
+          customerNet: customerCollectionNet,
           customerRepayments: summary?.customerBook?.totalRepayments || 0,
           customerCreditGiven: summary?.customerBook?.totalCreditGiven || 0,
           expenseTotal,
@@ -512,87 +517,215 @@ export const DailyClosingPage: React.FC = () => {
               </div>
             ) : (
               <>
-                {/* 6 Core Financial Position Fields Overview (Main Ledger Tracking Objective) */}
-                <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs space-y-3">
+                {/* 3 Core Financial Pillars & Ledger Tracking (User Specification) */}
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2 border-b border-slate-100">
-                    <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                       <Scale className="w-4 h-4 text-blue-600" />
-                      Daily Business Ledger & Financial Position
+                      3 Primary Financial Pillars
                     </h3>
-                    <span className="text-[11px] text-slate-400 font-medium">
-                      Cash in Hand • Total Liquid • To Give • To Get • Gross • Net
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      Total Cash Available • Gross Amount • Net Amount (Distinct)
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
-                    {/* 1. Cash in Hand */}
-                    <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/70">
-                      <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
-                        1. Cash in Hand
+                  {/* Top 3 Prominent Metric Pillars */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {/* Pillar 1: Total Cash Available (Liquid Cash) */}
+                    <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200/90 relative overflow-hidden">
+                      <span className="text-[10px] font-black text-blue-800 uppercase tracking-wider block">
+                        Pillar 1 • Total Cash Available (Liquid Cash)
                       </span>
-                      <span className="text-base sm:text-lg font-black font-mono text-emerald-950 block mt-0.5">
-                        ₹{liveCountedCashInHand.toLocaleString('en-IN')}
-                      </span>
-                      <span className="text-[10px] text-emerald-700 block truncate">Drawer / Counter cash</span>
-                    </div>
-
-                    {/* 2. Total Liquid Amount */}
-                    <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200/70">
-                      <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider block">
-                        2. Total Liquid Amount
-                      </span>
-                      <span className="text-base sm:text-lg font-black font-mono text-blue-950 block mt-0.5">
+                      <span className="text-xl sm:text-2xl font-black font-mono text-blue-950 block mt-1">
                         ₹{displayTotalLiquid.toLocaleString('en-IN')}
                       </span>
-                      <span className="text-[10px] text-blue-700 block truncate">Cash + Bank + Wallets</span>
+                      <p className="text-[11px] text-blue-700 mt-1">
+                        Physical counter cash + all bank accounts & wallets
+                      </p>
                     </div>
 
-                    {/* 3. Amount We Need to Get */}
-                    <div className="p-3 rounded-xl bg-teal-50/70 border border-teal-200/80">
-                      <span className="text-[10px] font-bold text-teal-800 uppercase tracking-wider block">
-                        3. Amount to Get
+                    {/* Pillar 2: Gross Amount */}
+                    <div className="p-4 rounded-xl bg-indigo-50/70 border border-indigo-200/90 relative overflow-hidden">
+                      <span className="text-[10px] font-black text-indigo-800 uppercase tracking-wider block">
+                        Pillar 2 • Gross Amount
                       </span>
-                      <span className="text-base sm:text-lg font-black font-mono text-teal-900 block mt-0.5">
-                        +₹{displayAmountToGet.toLocaleString('en-IN')}
-                      </span>
-                      <span className="text-[10px] text-teal-700 block truncate">
-                        You'll Get (Customers)
-                      </span>
-                    </div>
-
-                    {/* 4. Amount We Need to Give */}
-                    <div className="p-3 rounded-xl bg-rose-50/70 border border-rose-200/80">
-                      <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider block">
-                        4. Amount to Give
-                      </span>
-                      <span className="text-base sm:text-lg font-black font-mono text-rose-900 block mt-0.5">
-                        -₹{displayAmountToGive.toLocaleString('en-IN')}
-                      </span>
-                      <span className="text-[10px] text-rose-700 block truncate">
-                        Cust Adv / Supp / Cards
-                      </span>
-                    </div>
-
-                    {/* 5. Gross Amount */}
-                    <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200/80">
-                      <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider block">
-                        5. Gross Amount
-                      </span>
-                      <span className="text-base sm:text-lg font-black font-mono text-indigo-950 block mt-0.5">
+                      <span className="text-xl sm:text-2xl font-black font-mono text-indigo-950 block mt-1">
                         ₹{displayGrossAmount.toLocaleString('en-IN')}
                       </span>
-                      <span className="text-[10px] text-indigo-700 block truncate">Liquid + To Get</span>
+                      <p className="text-[11px] text-indigo-700 mt-1">
+                        Total liquid worth (approx. equal to Total Cash)
+                      </p>
                     </div>
 
-                    {/* 6. Net Amount */}
-                    <div className="p-3 rounded-xl bg-slate-900 text-white border border-slate-800">
-                      <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block">
-                        6. Net Amount
+                    {/* Pillar 3: Net Amount */}
+                    <div className="p-4 rounded-xl bg-slate-900 text-white border border-slate-800 relative overflow-hidden shadow-xs">
+                      <span className="text-[10px] font-black text-emerald-400 uppercase tracking-wider block">
+                        Pillar 3 • Net Amount
                       </span>
-                      <span className="text-base sm:text-lg font-black font-mono text-emerald-400 block mt-0.5">
+                      <span className="text-xl sm:text-2xl font-black font-mono text-emerald-300 block mt-1">
                         ₹{displayNetAmount.toLocaleString('en-IN')}
                       </span>
-                      <span className="text-[10px] text-slate-400 block truncate">Gross - To Give</span>
+                      <p className="text-[11px] text-slate-300 mt-1">
+                        Total Cash − Expenses (₹{expenseTotal.toLocaleString('en-IN')}) − Amount to Give (₹{displayAmountToGive.toLocaleString('en-IN')})
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Supporting Ledger Breakdown Row */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
+                    <div className="p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-200/60 flex items-center justify-between">
+                      <span className="text-emerald-800 font-semibold">Cash in Hand (Counter):</span>
+                      <span className="font-mono font-bold text-emerald-950">
+                        ₹{liveCountedCashInHand.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-teal-50/60 border border-teal-200/60 flex items-center justify-between">
+                      <span className="text-teal-800 font-semibold">Amount to Get (Receivables):</span>
+                      <span className="font-mono font-bold text-teal-950">
+                        +₹{displayAmountToGet.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-rose-50/60 border border-rose-200/60 flex items-center justify-between">
+                      <span className="text-rose-800 font-semibold">Amount to Give (Liabilities):</span>
+                      <span className="font-mono font-bold text-rose-950">
+                        -₹{displayAmountToGive.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Daily Milestone & Reconciliation Cycle (Yesterday Close ➔ Today Opening ➔ Today Closing) */}
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2 border-b border-slate-100">
+                    <div>
+                      <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-amber-500" />
+                        Daily Milestone & Reconciliation Cycle
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Morning matches yesterday’s close • Evening matches morning opening milestone
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
+                      Cycle Tracking
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-stretch">
+                    {/* Stage 1: Previous Day's Closing */}
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            1. Previous Day Close
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                            Baseline
+                          </span>
+                        </div>
+                        <span className="text-lg font-black font-mono text-slate-900 block mt-1">
+                          ₹{(
+                            summary?.previousClosingCountedCash ??
+                            summary?.previousClosing?.actualClosingBalance ??
+                            0
+                          ).toLocaleString('en-IN')}
+                        </span>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          {summary?.previousClosing
+                            ? `Closed on ${formatDate(summary.previousClosing.date)}`
+                            : 'Starting system baseline'}
+                        </p>
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-slate-200/70 text-[11px] text-slate-600 flex items-center justify-between">
+                        <span>Night Adjustments:</span>
+                        <span className="font-mono font-bold">
+                          {(summary?.afterClosingActivity?.netAdjustment || 0) >= 0 ? '+' : ''}
+                          ₹{(summary?.afterClosingActivity?.netAdjustment || 0).toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Stage 2: Today's Morning Opening Milestone */}
+                    <div className="p-3.5 rounded-xl bg-blue-50/60 border border-blue-200/80 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700">
+                            2. Morning Opening Milestone
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              summary?.isOpened
+                                ? 'bg-blue-200 text-blue-900'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {summary?.isOpened ? 'Opened & Locked' : 'Awaiting Opening'}
+                          </span>
+                        </div>
+                        <span className="text-lg font-black font-mono text-blue-950 block mt-1">
+                          ₹{(
+                            summary?.existingClosing?.openingCountedBalance ??
+                            openingBalance
+                          ).toLocaleString('en-IN')}
+                        </span>
+                        <div className="mt-1 space-y-0.5 text-[11px] text-blue-900">
+                          <div>
+                            Gross: <strong className="font-mono">₹{(summary?.existingClosing?.openingGrossAmount ?? summary?.existingClosing?.openingCountedBalance ?? openingBalance).toLocaleString('en-IN')}</strong>
+                            {' • '}
+                            Net: <strong className="font-mono">₹{(summary?.existingClosing?.openingNetAmount ?? ((summary?.existingClosing?.openingCountedBalance ?? openingBalance) - displayAmountToGive)).toLocaleString('en-IN')}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-blue-200/70 text-[11px] text-blue-900 flex items-center justify-between">
+                        <span>Yesterday Discrepancy:</span>
+                        <span className="font-mono font-bold">
+                          {(summary?.existingClosing?.openingVariance ?? 0) === 0
+                            ? 'Balanced (₹0)'
+                            : `${(summary?.existingClosing?.openingVariance || 0) > 0 ? '+' : ''}₹${(summary?.existingClosing?.openingVariance || 0).toLocaleString('en-IN')}`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Stage 3: Today's Evening Closing Milestone */}
+                    <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200/80 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+                            3. Evening Closing Milestone
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              summary?.isAlreadyClosed
+                                ? 'bg-emerald-200 text-emerald-900'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            {summary?.isAlreadyClosed ? 'Closed Today' : 'Ready to Close'}
+                          </span>
+                        </div>
+                        <span className="text-lg font-black font-mono text-emerald-950 block mt-1">
+                          ₹{actualClosingBalance.toLocaleString('en-IN')}
+                        </span>
+                        <div className="mt-1 space-y-0.5 text-[11px] text-emerald-900">
+                          <div>
+                            Gross: <strong className="font-mono">₹{displayGrossAmount.toLocaleString('en-IN')}</strong>
+                            {' • '}
+                            Net: <strong className="font-mono">₹{displayNetAmount.toLocaleString('en-IN')}</strong>
+                          </div>
+                          <div>Expected: <span className="font-mono font-semibold">₹{expectedClosingBalance.toLocaleString('en-IN')}</span></div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-emerald-200/70 text-[11px] text-emerald-900 flex items-center justify-between">
+                        <span>Opening Match Difference:</span>
+                        <span className={`font-mono font-bold ${isBalanced ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          {isBalanced ? 'Matched (₹0)' : `${variance > 0 ? '+' : ''}₹${variance.toLocaleString('en-IN')}`}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -755,8 +888,8 @@ export const DailyClosingPage: React.FC = () => {
                           </span>
                         </div>
 
-                        {/* 2. Customer Collection (Get - Give + Today's Cash Movement) */}
-                        <div className="p-3 rounded-xl bg-slate-50 space-y-2">
+                        {/* 2. Customer Collection (Get vs Give) */}
+                        <div className="p-3 rounded-xl bg-slate-50">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2.5">
                               <span className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
@@ -778,12 +911,6 @@ export const DailyClosingPage: React.FC = () => {
                               }`}
                             >
                               {customerCollectionNet >= 0 ? '+' : ''}₹{customerCollectionNet.toLocaleString('en-IN')}
-                            </span>
-                          </div>
-                          <div className="pl-9 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-200/60 pt-1.5">
-                            <span>Today's Drawer Movement (Got - Gave):</span>
-                            <span className={`font-mono font-bold ${customerCashNetToday >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>
-                              {customerCashNetToday >= 0 ? '+' : ''}₹{customerCashNetToday.toLocaleString('en-IN')}
                             </span>
                           </div>
                         </div>
@@ -828,21 +955,23 @@ export const DailyClosingPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Expected Liquid Cash & Market Net Worth Box */}
+                    {/* Expected Liquid Cash Box */}
                     <div className="p-4 rounded-xl bg-slate-900 text-white space-y-2 mt-4">
                       <div className="flex items-center justify-between">
                         <div>
                           <span className="text-xs text-slate-300 font-semibold block">Expected Liquid Cash</span>
-                          <span className="text-[11px] text-slate-400">Opening + Sales + Today Cash - Expenses + Cards</span>
+                          <span className="text-[11px] text-slate-400">
+                            Opening + Sales + Customer Collection (Get − Give) − Expenses + Cards
+                          </span>
                         </div>
                         <span className="text-xl font-black font-mono text-white">
                           ₹{expectedClosingBalance.toLocaleString('en-IN')}
                         </span>
                       </div>
                       <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
-                        <span className="text-slate-400">Opening + Customer Collection (Get − Give):</span>
+                        <span className="text-slate-400">Customer Net Collection (Get − Give):</span>
                         <span className="font-mono font-bold text-emerald-400">
-                          ₹{(openingBalance + customerCollectionNet).toLocaleString('en-IN')}
+                          {customerCollectionNet >= 0 ? '+' : ''}₹{customerCollectionNet.toLocaleString('en-IN')}
                         </span>
                       </div>
                     </div>
