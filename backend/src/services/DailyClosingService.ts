@@ -13,23 +13,38 @@ import { BillerModel } from '../models/Biller';
 import { ApiError } from '../utils/ApiError';
 import { CreditTransactionType, CreditCardTransactionType } from '../constants/enums';
 
-export interface SaveDailyClosingDTO {
-  date: string; // 'YYYY-MM-DD'
-  openingBalance: number;
-  previousClosingCash?: number;
-  afterClosingExpenses?: number;
-  afterClosingCollections?: number;
-  dayBookSales: number;
-  customerNet: number;
-  customerRepayments: number;
-  customerCreditGiven: number;
-  expenseTotal: number;
-  creditCardNet: number;
-  creditCardDrawn: number;
-  creditCardPayment: number;
+export interface OpenDayDTO {
+  date: string;
+  openingBalance?: number;
   manualSplitUps: IManualCashSplitUp[];
   notes?: string;
 }
+
+export interface SaveDailyClosingDTO {
+  date: string; // 'YYYY-MM-DD'
+  openingBalance?: number;
+  previousClosingCash?: number;
+  afterClosingExpenses?: number;
+  afterClosingCollections?: number;
+  dayBookSales?: number;
+  customerNet?: number;
+  customerRepayments?: number;
+  customerCreditGiven?: number;
+  expenseTotal?: number;
+  creditCardNet?: number;
+  creditCardDrawn?: number;
+  creditCardPayment?: number;
+  manualSplitUps: IManualCashSplitUp[];
+  notes?: string;
+}
+
+export type DayActionMode =
+  | 'OPEN'
+  | 'CLOSE'
+  | 'EDIT_CLOSE'
+  | 'LOCKED_PAST_CLOSED'
+  | 'LOCKED_PAST_MISSED'
+  | 'LOCKED_FUTURE';
 
 export class DailyClosingService {
   private closingRepo: DailyClosingRepository;
@@ -39,42 +54,114 @@ export class DailyClosingService {
   }
 
   /**
-   * Fetches real-time computed stats for the given date (default today),
-   * along with previous day's closing balance (which serves as today's opening balance),
-   * detailed breakdowns of each book, and any existing saved closing record.
-   * Optimised with parallel non-blocking queries and lean memory footprint.
+   * Computes rolled-forward cash movements across unclosed gap days
+   * between a past closing timestamp and startOfDay of the target date.
+   * Runs cleanly via parallel aggregate calls.
    */
-  async getLiveDaySummary(dateStr: string) {
+  private async computeIntermediateCashDelta(fromDateExclusive: Date, toDateExclusive: Date): Promise<number> {
+    if (fromDateExclusive >= toDateExclusive) return 0;
+
+    const [salesAgg, expAgg, cardAgg, creditAgg] = await Promise.all([
+      DayBookEntryModel.aggregate([
+        { $match: { date: { $gt: fromDateExclusive, $lt: toDateExclusive }, isDeleted: { $ne: true } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      ExpenseModel.aggregate([
+        { $match: { date: { $gt: fromDateExclusive, $lt: toDateExclusive }, isDeleted: { $ne: true } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      CreditCardTransactionModel.aggregate([
+        { $match: { date: { $gt: fromDateExclusive, $lt: toDateExclusive } } },
+        { $group: { _id: '$type', total: { $sum: '$amount' } } },
+      ]),
+      CreditModel.aggregate([
+        { $unwind: '$entries' },
+        { $match: { 'entries.date': { $gt: fromDateExclusive, $lt: toDateExclusive }, 'entries.isDeleted': { $ne: true } } },
+        { $group: { _id: '$entries.type', total: { $sum: '$entries.amount' } } },
+      ]),
+    ]);
+
+    const sales = salesAgg[0]?.total || 0;
+    const exp = expAgg[0]?.total || 0;
+    let cardNet = 0;
+    for (const c of cardAgg) {
+      if (c._id === CreditCardTransactionType.PURCHASE || c._id === CreditCardTransactionType.CASH_DRAWN) {
+        cardNet += c.total || 0;
+      } else if (c._id === CreditCardTransactionType.PAYMENT) {
+        cardNet -= c.total || 0;
+      }
+    }
+    let custNet = 0;
+    for (const cr of creditAgg) {
+      if (cr._id === CreditTransactionType.REPAYMENT) custNet += cr.total || 0;
+      else if (cr._id === CreditTransactionType.GIVEN) custNet -= cr.total || 0;
+    }
+
+    return sales + custNet - exp + cardNet;
+  }
+
+  /**
+   * Fetches real-time computed stats for the given date (default today),
+   * along with previous day's closing balance, Customer Get vs Give position,
+   * the 6 core financial position metrics, and Opening/Closing lifecycle phase.
+   */
+  async getLiveDaySummary(dateStr: string, options?: { todayOverride?: string }) {
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       throw ApiError.badRequest('Invalid date format. Expected YYYY-MM-DD');
     }
 
+    const effectiveToday = options?.todayOverride || getTodayIST();
+    const isToday = dateStr === effectiveToday;
+    const isPastDate = dateStr < effectiveToday;
+    const isFutureDate = dateStr > effectiveToday;
+
     const startOfDay = getStartOfDayIST(dateStr);
     const endOfDay = getEndOfDayIST(dateStr);
+    const yesterdayStr = dayjs.tz(dateStr, TIMEZONE).subtract(1, 'day').format('YYYY-MM-DD');
 
-    // 1. Parallel: find existing closing record and previous closing record
-    const [existingClosing, previousClosing] = await Promise.all([
+    // 1. Parallel: find existing day record, most recent CLOSED record, and most recent ANY record
+    const [existingClosing, previousClosed, previousAnyRecord] = await Promise.all([
       this.closingRepo.findByDate(dateStr),
       this.closingRepo.findPreviousClosing(dateStr),
+      this.closingRepo.findPreviousRecord(dateStr),
     ]);
 
-    const previousClosingCountedCash = previousClosing ? previousClosing.actualClosingBalance : 0;
-    const prevCloseTime = previousClosing?.closedAt
-      ? new Date(previousClosing.closedAt)
-      : previousClosing
-      ? getEndOfDayIST(previousClosing.date)
+    // Legacy closing docs created prior to Opening support have isClosed=true and should count as opened
+    const isOpened = !!(existingClosing?.isOpened || existingClosing?.isClosed);
+    const isClosed = !!existingClosing?.isClosed;
+
+    let actionMode: DayActionMode;
+    if (isFutureDate) {
+      actionMode = 'LOCKED_FUTURE';
+    } else if (isPastDate) {
+      actionMode = isClosed ? 'LOCKED_PAST_CLOSED' : 'LOCKED_PAST_MISSED';
+    } else {
+      // Today (allowed up to 23:59:59 IST)
+      if (!isOpened) actionMode = 'OPEN';
+      else if (!isClosed) actionMode = 'CLOSE';
+      else actionMode = 'EDIT_CLOSE';
+    }
+
+    const previousClosingCountedCash = previousClosed ? previousClosed.actualClosingBalance : 0;
+    const prevCloseTime = previousClosed
+      ? previousClosed.closedAt &&
+        dayjs(previousClosed.closedAt).tz(TIMEZONE).format('YYYY-MM-DD') === previousClosed.date
+        ? new Date(previousClosed.closedAt)
+        : getEndOfDayIST(previousClosed.date)
       : null;
 
-    // 2. Parallel: Execute all ledger queries concurrently with .lean() to minimise server memory and CPU
+    // 2. Parallel: Execute all ledger queries concurrently with .lean() to minimise server load
     const [
-      dayBookEntries,
-      creditsWithEntries,
+      allDayBookEntries,
+      allCredits,
+      allPayables,
+      activeCards,
       allDayExpenses,
       cardTransactions,
       accounts,
       nightExpenses,
     ] = await Promise.all([
-      // Day Book: Sales today
+      // Day Book entries today
       DayBookEntryModel.find({
         date: { $gte: startOfDay, $lte: endOfDay },
         isDeleted: { $ne: true },
@@ -84,11 +171,19 @@ export class DailyClosingService {
         .populate('accountId', 'name')
         .lean(),
 
-      // Customer Book: Transactions today
-      CreditModel.find({
-        'entries.date': { $gte: startOfDay, $lte: endOfDay },
-      })
-        .select('partyName entries')
+      // ALL Customers: computes BOTH overall To Get / To Give AND today's entries in 1 lean pass
+      CreditModel.find()
+        .select('partyName balanceDue entries')
+        .lean(),
+
+      // Active Suppliers (Payables & Receivables)
+      PayableModel.find({ status: 'ACTIVE' })
+        .select('partyName balancePending')
+        .lean(),
+
+      // Active Credit Cards
+      CreditCardModel.find({ isActive: true })
+        .select('cardName totalOutstanding')
         .lean(),
 
       // Expenses today
@@ -107,11 +202,13 @@ export class DailyClosingService {
         .populate('cardId', 'cardName bankName last4Digits')
         .lean(),
 
-      // Active Accounts for split-up defaults
-      AccountModel.find({ isActive: true }).select('name balance').lean(),
+      // Active Accounts for Cash in Hand / Total Liquid Amount
+      AccountModel.find({ isActive: true })
+        .select('name type balance')
+        .lean(),
 
-      // After-closing night expenses between yesterday's close and today's start
-      prevCloseTime
+      // After-closing night expenses between yesterday's close (when yesterday was closed) and today's start
+      prevCloseTime && previousClosed?.date === yesterdayStr
         ? ExpenseModel.find({
             date: { $gt: prevCloseTime, $lt: startOfDay },
             isDeleted: { $ne: true },
@@ -122,8 +219,15 @@ export class DailyClosingService {
         : Promise.resolve([]),
     ]);
 
-    // 3. Process Day Book Sales
-    const totalDayBookSales = dayBookEntries.reduce((sum, entry) => sum + entry.amount, 0);
+    // 3. Separate After-Closing Collections vs Daytime Day Book Sales
+    const taggedAfterCloseCollections = allDayBookEntries.filter(
+      (e) => e.remarks && /\[After-Closing Adjustment\]/i.test(e.remarks)
+    );
+    const dayBookEntries = allDayBookEntries.filter(
+      (e) => !e.remarks || !/\[After-Closing Adjustment\]/i.test(e.remarks)
+    );
+
+    const totalDayBookSales = dayBookEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
     const billerMap = new Map<string, { billerId: string; billerName: string; totalSales: number; count: number }>();
     for (const entry of dayBookEntries) {
       const biller = entry.billerId as any;
@@ -138,13 +242,19 @@ export class DailyClosingService {
     }
     const billerBreakdown = Array.from(billerMap.values());
 
-    // 4. Process Customer Book Transactions
-    let customerRepayments = 0; // Customer paid us (Cash in: +)
-    let customerCreditGiven = 0; // We gave credit (Credit extended: -)
+    // 4. Customer Book: Overall To Get / To Give AND Today's Cash Movements
+    let customerToGet = 0; // Total customers owe us (You'll Get)
+    let customerToGive = 0; // Total we owe customers (You'll Give)
+    let customerRepayments = 0; // Cash received from customers today (+)
+    let customerCreditGiven = 0; // Cash/credit given to customers today (-)
     const customerTransactions: any[] = [];
 
-    for (const credit of creditsWithEntries) {
-      for (const entry of credit.entries) {
+    for (const credit of allCredits) {
+      const due = Number(credit.balanceDue) || 0;
+      if (due > 0) customerToGet += due;
+      else if (due < 0) customerToGive += Math.abs(due);
+
+      for (const entry of credit.entries || []) {
         if ((entry as any).isDeleted) continue;
         const eDate = new Date(entry.date);
         if (eDate >= startOfDay && eDate <= endOfDay) {
@@ -163,16 +273,28 @@ export class DailyClosingService {
         }
       }
     }
-    const customerNet = customerRepayments - customerCreditGiven;
 
-    // 5. Separate After-Closing Expenses vs Daytime Expenses
+    const customerCollectionNet = customerToGet - customerToGive; // Overall Customer Get - Give
+    const customerCashNetToday = customerRepayments - customerCreditGiven; // Today's cash movement
+
+    // 5. Suppliers & Credit Cards Liabilities
+    let supplierToPay = 0;
+    let supplierToGet = 0;
+    for (const p of allPayables) {
+      const pending = Number(p.balancePending) || 0;
+      if (pending > 0) supplierToPay += pending;
+      else if (pending < 0) supplierToGet += Math.abs(pending);
+    }
+    const totalCardDebt = activeCards.reduce((sum, c) => sum + Math.max(0, Number(c.totalOutstanding) || 0), 0);
+
+    // 6. After-Closing Expenses vs Daytime Expenses
     const taggedAdjustmentExpenses = allDayExpenses.filter(
       (e) => e.remarks && /\[After-Closing Adjustment\]/i.test(e.remarks)
     );
     const afterClosingExpenses = [...nightExpenses, ...taggedAdjustmentExpenses];
     const afterClosingExpenseTotal = afterClosingExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const afterClosingCollectionTotal = taggedAfterCloseCollections.reduce((sum, e) => sum + (e.amount || 0), 0);
 
-    // Daytime expenses (excluding after-closing adjustments so they are not subtracted twice)
     const daytimeExpenses = allDayExpenses.filter(
       (e) => !e.remarks || !/\[After-Closing Adjustment\]/i.test(e.remarks)
     );
@@ -190,7 +312,7 @@ export class DailyClosingService {
     }
     const expenseCategoryBreakdown = Array.from(expenseCategoryMap.values());
 
-    // 6. Process Credit Card Transactions
+    // 7. Credit Card Transactions today
     let creditCardDrawn = 0;
     let creditCardPayment = 0;
     for (const tx of cardTransactions) {
@@ -202,31 +324,71 @@ export class DailyClosingService {
     }
     const creditCardNet = creditCardDrawn - creditCardPayment;
 
-    // 7. Reconciled Opening Balance Calculation
-    // Base is strictly yesterday's closing total counted cash.
-    // Adjusted by any after-closing activity (expenses - / collections +).
-    const afterClosingCollectionTotal = 0; // Reserved for late customer payments
-    const afterClosingCollections: any[] = [];
+    // 8. Reconciled Opening Balance Calculation (Strictly Non-Editable once opened or backed by history)
+    let missedDaysCarryForward = 0;
+    let baseCarryForward = previousClosingCountedCash;
 
-    const reconciledOpeningBalance = previousClosing
-      ? Math.max(0, previousClosingCountedCash + afterClosingCollectionTotal - afterClosingExpenseTotal)
-      : existingClosing
-      ? existingClosing.openingBalance
-      : 0;
+    if (previousClosed && previousClosed.date < yesterdayStr) {
+      // One or more days between previousClosed and today were not closed before 11:59 PM.
+      // Roll forward net cash movement cleanly so starting balance remains accurate.
+      const fromTime = prevCloseTime || getEndOfDayIST(previousClosed.date);
+      missedDaysCarryForward = await this.computeIntermediateCashDelta(fromTime, startOfDay);
+      baseCarryForward = Math.max(0, previousClosingCountedCash + missedDaysCarryForward);
+    } else if (!previousClosed && previousAnyRecord?.isOpened) {
+      // No closed day exists yet, but a previous day was opened
+      const fromTime = getStartOfDayIST(previousAnyRecord.date);
+      missedDaysCarryForward = await this.computeIntermediateCashDelta(fromTime, startOfDay);
+      baseCarryForward = Math.max(0, previousAnyRecord.openingBalance + missedDaysCarryForward);
+    }
 
-    // Opening balance cannot be edited when previousClosing exists
-    const isOpeningLocked = !!previousClosing;
-    const openingBalance = existingClosing ? existingClosing.openingBalance : reconciledOpeningBalance;
+    const reconciledOpeningBalance =
+      previousClosed || previousAnyRecord?.isOpened
+        ? Math.max(0, baseCarryForward + afterClosingCollectionTotal - afterClosingExpenseTotal)
+        : existingClosing
+        ? existingClosing.openingBalance
+        : 0;
 
+    // Starting liquid cash is ALWAYS locked once day is opened OR when prior closed/opened records exist
+    const isOpeningLocked = isOpened || !!(previousClosed || previousAnyRecord?.isOpened);
+    const openingBalance = isOpened && existingClosing ? existingClosing.openingBalance : reconciledOpeningBalance;
+
+    // Expected Liquid Closing Cash (matches Physical Cash & Bank Balances)
     const expectedClosingBalance =
-      openingBalance + totalDayBookSales + customerNet - totalExpenses + creditCardNet;
+      openingBalance + totalDayBookSales + customerCashNetToday - totalExpenses + creditCardNet;
 
-    // 8. Split-up sources
+    // 9. Account Liquid Breakdown & 6 Core Financial Position Fields
+    let systemCashInHand = 0;
+    let systemBankBalances = 0;
+    for (const acc of accounts) {
+      if (acc.type === 'CASH') systemCashInHand += acc.balance || 0;
+      else systemBankBalances += acc.balance || 0;
+    }
+    const systemTotalLiquid = systemCashInHand + systemBankBalances;
+
+    // Total Amount We Need to Get & Give across entire ledger
+    const amountToGet = customerToGet + supplierToGet;
+    const amountToGive = customerToGive + supplierToPay + totalCardDebt;
+
+    // Current reference liquid amount: use saved closed count if closed, else expected/system liquid
+    const effectiveLiquidAmount = isClosed && existingClosing
+      ? existingClosing.actualClosingBalance
+      : expectedClosingBalance;
+
+    const grossAmount = effectiveLiquidAmount + amountToGet;
+    const netAmount = effectiveLiquidAmount + amountToGet - amountToGive;
+
+    // 10. Default Split-Up Sources
     let defaultSplitUps: IManualCashSplitUp[] = [];
     if (existingClosing && existingClosing.manualSplitUps && existingClosing.manualSplitUps.length > 0) {
       defaultSplitUps = existingClosing.manualSplitUps;
-    } else if (previousClosing && previousClosing.manualSplitUps && previousClosing.manualSplitUps.length > 0) {
-      defaultSplitUps = previousClosing.manualSplitUps.map((s) => ({
+    } else if (existingClosing && existingClosing.openingManualSplitUps && existingClosing.openingManualSplitUps.length > 0) {
+      defaultSplitUps = existingClosing.openingManualSplitUps.map((s) => ({
+        sourceName: s.sourceName,
+        amount: 0,
+        notes: s.notes,
+      }));
+    } else if (previousClosed && previousClosed.manualSplitUps && previousClosed.manualSplitUps.length > 0) {
+      defaultSplitUps = previousClosed.manualSplitUps.map((s) => ({
         sourceName: s.sourceName,
         amount: 0,
         notes: s.notes,
@@ -247,25 +409,30 @@ export class DailyClosingService {
 
     return {
       date: dateStr,
-      isAlreadyClosed: !!existingClosing,
+      effectiveToday,
+      actionMode,
+      isOpened,
+      isAlreadyClosed: isClosed,
       isOpeningLocked,
+      isPastDate,
       existingClosing,
-      previousClosing: previousClosing
+      previousClosing: previousClosed
         ? {
-            date: previousClosing.date,
-            actualClosingBalance: previousClosing.actualClosingBalance,
-            variance: previousClosing.variance,
-            status: previousClosing.status,
-            closedAt: previousClosing.closedAt,
+            date: previousClosed.date,
+            actualClosingBalance: previousClosed.actualClosingBalance,
+            variance: previousClosed.variance,
+            status: previousClosed.status,
+            closedAt: previousClosed.closedAt,
           }
         : null,
       openingBalance,
       reconciledOpeningBalance,
       previousClosingCountedCash,
+      missedDaysCarryForward,
       afterClosingActivity: {
         expenses: afterClosingExpenses,
         totalExpenses: afterClosingExpenseTotal,
-        collections: afterClosingCollections,
+        collections: taggedAfterCloseCollections,
         totalCollections: afterClosingCollectionTotal,
         netAdjustment: afterClosingCollectionTotal - afterClosingExpenseTotal,
       },
@@ -276,9 +443,12 @@ export class DailyClosingService {
         entries: dayBookEntries.slice(0, 50),
       },
       customerBook: {
-        customerNet,
+        customerNet: customerCashNetToday, // Today's cash impact
         totalRepayments: customerRepayments,
         totalCreditGiven: customerCreditGiven,
+        customerToGet,
+        customerToGive,
+        customerCollectionNet, // Overall To Get - To Give
         totalTransactions: customerTransactions.length,
         transactions: customerTransactions.slice(0, 50),
       },
@@ -295,173 +465,259 @@ export class DailyClosingService {
         totalTransactions: cardTransactions.length,
         transactions: cardTransactions.slice(0, 50),
       },
+      // 6 Core Financial Position Fields
+      financialPosition: {
+        cashInHand: systemCashInHand,
+        bankBalance: systemBankBalances,
+        systemTotalLiquid,
+        totalLiquidAmount: effectiveLiquidAmount,
+        amountToGet,
+        customerToGet,
+        supplierToGet,
+        amountToGive,
+        customerToGive,
+        supplierToPay,
+        totalCardDebt,
+        grossAmount,
+        netAmount,
+        // Formula clarity: Opening + (Customer Get - Give)
+        openingWithCustomerNet: openingBalance + customerCollectionNet,
+      },
       expectedClosingBalance,
       defaultSplitUps,
     };
   }
 
   /**
-   * Saves or updates the daily closing record with enterprise verification.
-   * System strictly enforces starting liquid cash from yesterday's counted close + after-close adjustments.
-   * Client-submitted manual opening balance overrides are ignored when a previous closing exists.
+   * Step 1: Open the Day (allowed ONCE per day, strictly view-only forever after).
+   * Even at 11:59 PM, the first save of a day is Opening, never Closing.
    */
-  async saveDailyClosing(dto: SaveDailyClosingDTO) {
-    const {
-      date,
-      openingBalance,
-      dayBookSales,
-      customerNet,
-      customerRepayments,
-      customerCreditGiven,
-      expenseTotal,
-      creditCardNet,
-      creditCardDrawn,
-      creditCardPayment,
-      manualSplitUps,
-      notes,
-    } = dto;
+  async openDay(dto: OpenDayDTO, options?: { todayOverride?: string }) {
+    const { date, openingBalance: requestedOpening, manualSplitUps, notes } = dto;
+    const effectiveToday = options?.todayOverride || getTodayIST();
+
+    if (date < effectiveToday) {
+      throw ApiError.badRequest(
+        `Cannot open past day (${date}). Missed days do not require opening/closing; please open today (${effectiveToday}).`
+      );
+    }
+    if (date > effectiveToday) {
+      throw ApiError.badRequest(`Cannot open future date (${date}).`);
+    }
+
+    const existing = await this.closingRepo.findByDate(date);
+    if (existing && (existing.isOpened || existing.isClosed)) {
+      throw ApiError.badRequest(
+        'This day has already been opened. Day Opening can only happen once and is strictly view-only.'
+      );
+    }
 
     if (!manualSplitUps || manualSplitUps.length === 0) {
       throw ApiError.badRequest('At least one cash/bank split-up source is required');
     }
 
-    const startOfDay = getStartOfDayIST(date);
-    const endOfDay = getEndOfDayIST(date);
+    // Compute authoritative summary before opening
+    const liveSummary = await this.getLiveDaySummary(date, options);
+    const hasPreviousHistory = !!(liveSummary.previousClosing || liveSummary.missedDaysCarryForward !== 0);
+    const authoritativeOpeningBalance = hasPreviousHistory
+      ? liveSummary.reconciledOpeningBalance
+      : requestedOpening !== undefined
+      ? requestedOpening
+      : liveSummary.reconciledOpeningBalance;
 
-    // 1. Authoritative check of previous closing to prevent starting cash tampering
-    const previousClosing = await this.closingRepo.findPreviousClosing(date);
-    let finalOpeningBalance = openingBalance;
-    let finalPreviousClosingCash = 0;
-    let finalAfterClosingExpenses = 0;
-    let finalAfterClosingCollections = 0;
+    const openingCountedBalance = manualSplitUps.reduce(
+      (sum, item) => sum + (Number(item.amount) || 0),
+      0
+    );
 
-    if (previousClosing) {
-      finalPreviousClosingCash = previousClosing.actualClosingBalance;
-      const prevCloseTime = previousClosing.closedAt
-        ? new Date(previousClosing.closedAt)
-        : getEndOfDayIST(previousClosing.date);
+    const openingExpectedBalance = authoritativeOpeningBalance;
+    const openingVariance = openingCountedBalance - openingExpectedBalance;
+    const isBalanced = Math.abs(openingVariance) < 0.01;
+    const status: 'BALANCED' | 'DISCREPANCY' = isBalanced ? 'BALANCED' : 'DISCREPANCY';
 
-      const [nightExpenses, taggedExpenses] = await Promise.all([
-        ExpenseModel.find({
-          date: { $gt: prevCloseTime, $lt: startOfDay },
-          isDeleted: { $ne: true },
-        })
-          .select('amount')
-          .lean(),
-        ExpenseModel.find({
-          date: { $gte: startOfDay, $lte: endOfDay },
-          remarks: { $regex: /\[After-Closing Adjustment\]/i },
-          isDeleted: { $ne: true },
-        })
-          .select('amount')
-          .lean(),
-      ]);
+    // Determine counted Cash in Hand from cash split-up rows if present
+    const countedCashInHand = manualSplitUps
+      .filter((s) => /cash|drawer|counter/i.test(s.sourceName))
+      .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+    const fp = liveSummary.financialPosition;
+    const effectiveCashInHand = countedCashInHand > 0 ? countedCashInHand : fp.cashInHand;
 
-      finalAfterClosingExpenses = [...nightExpenses, ...taggedExpenses].reduce(
-        (sum, e) => sum + (e.amount || 0),
-        0
+    let warningMessage: string | null = null;
+    if (!isBalanced) {
+      const diffFormatted = Math.abs(openingVariance).toLocaleString('en-IN');
+      warningMessage =
+        openingVariance > 0
+          ? `Day opened with opening surplus of +₹${diffFormatted} (Counted ₹${openingCountedBalance.toLocaleString('en-IN')} vs Expected ₹${openingExpectedBalance.toLocaleString('en-IN')}).`
+          : `Day opened with opening shortage of -₹${diffFormatted} (Counted ₹${openingCountedBalance.toLocaleString('en-IN')} vs Expected ₹${openingExpectedBalance.toLocaleString('en-IN')}).`;
+    }
+
+    const record = await DailyClosingModel.create({
+      date,
+      isOpened: true,
+      openedAt: new Date(),
+      isClosed: false,
+      openingBalance: authoritativeOpeningBalance,
+      openingCountedBalance,
+      openingExpectedBalance,
+      openingVariance,
+      openingManualSplitUps: manualSplitUps,
+      openingNotes: notes,
+      previousClosingCash: liveSummary.previousClosingCountedCash,
+      afterClosingExpenses: liveSummary.afterClosingActivity.totalExpenses,
+      afterClosingCollections: liveSummary.afterClosingActivity.totalCollections,
+      dayBookSales: liveSummary.dayBook.totalSales,
+      customerNet: liveSummary.customerBook.customerNet,
+      customerRepayments: liveSummary.customerBook.totalRepayments,
+      customerCreditGiven: liveSummary.customerBook.totalCreditGiven,
+      customerToGet: liveSummary.customerBook.customerToGet,
+      customerToGive: liveSummary.customerBook.customerToGive,
+      customerCollectionNet: liveSummary.customerBook.customerCollectionNet,
+      expenseTotal: liveSummary.expenseBook.totalExpenses,
+      creditCardNet: liveSummary.creditCardBook.creditCardNet,
+      creditCardDrawn: liveSummary.creditCardBook.creditCardDrawn,
+      creditCardPayment: liveSummary.creditCardBook.creditCardPayment,
+      expectedClosingBalance: liveSummary.expectedClosingBalance,
+      manualSplitUps: [],
+      actualClosingBalance: 0,
+      variance: 0,
+      status,
+      cashInHand: effectiveCashInHand,
+      totalLiquidAmount: openingCountedBalance,
+      amountToGet: fp.amountToGet,
+      amountToGive: fp.amountToGive,
+      grossAmount: openingCountedBalance + fp.amountToGet,
+      netAmount: openingCountedBalance + fp.amountToGet - fp.amountToGive,
+    });
+
+    return {
+      closing: record,
+      isBalanced,
+      variance: openingVariance,
+      warningMessage,
+      actionMode: 'CLOSE' as DayActionMode,
+    };
+  }
+
+  /**
+   * Step 2+: Save or update the daily closing record (2nd calculation and after).
+   * Possible ONLY on the same day up to 23:59 IST.
+   * Re-closing on the same day records a Same-Day Closing Edit with audit history.
+   */
+  async saveDailyClosing(dto: SaveDailyClosingDTO, options?: { todayOverride?: string }) {
+    const { date, manualSplitUps, notes } = dto;
+    const effectiveToday = options?.todayOverride || getTodayIST();
+
+    if (!manualSplitUps || manualSplitUps.length === 0) {
+      throw ApiError.badRequest('At least one cash/bank split-up source is required');
+    }
+
+    if (date < effectiveToday) {
+      throw ApiError.badRequest(
+        `Closing cutoff (11:59 PM) has passed for ${date}. Past days cannot be closed later; please start fresh with the new day.`
       );
-      finalOpeningBalance = Math.max(
-        0,
-        finalPreviousClosingCash + finalAfterClosingCollections - finalAfterClosingExpenses
+    }
+    if (date > effectiveToday) {
+      throw ApiError.badRequest(`Cannot close a future date (${date}).`);
+    }
+
+    const existing = await this.closingRepo.findByDate(date);
+    if (!existing || (!existing.isOpened && !existing.isClosed)) {
+      throw ApiError.badRequest(
+        'Please "Open the Day" first before closing it. The first action of any day is always opening.'
       );
     }
 
-    // Formula: LC (Opening) + Daybook + Customer Book - Expenses + Credit Card
-    const expectedClosingBalance =
-      finalOpeningBalance + dayBookSales + customerNet - expenseTotal + creditCardNet;
+    // Recompute authoritative day ledger totals from DB so numbers are 100% tamper-proof
+    const liveSummary = await this.getLiveDaySummary(date, options);
+    const authoritativeOpeningBalance = existing.openingBalance;
+    const dayBookSales = liveSummary.dayBook.totalSales;
+    const customerCashNetToday = liveSummary.customerBook.customerNet;
+    const customerRepayments = liveSummary.customerBook.totalRepayments;
+    const customerCreditGiven = liveSummary.customerBook.totalCreditGiven;
+    const expenseTotal = liveSummary.expenseBook.totalExpenses;
+    const creditCardNet = liveSummary.creditCardBook.creditCardNet;
+    const creditCardDrawn = liveSummary.creditCardBook.creditCardDrawn;
+    const creditCardPayment = liveSummary.creditCardBook.creditCardPayment;
 
-    // Actual sum of all manually entered cash & bank sources
+    const expectedClosingBalance =
+      authoritativeOpeningBalance + dayBookSales + customerCashNetToday - expenseTotal + creditCardNet;
+
     const actualClosingBalance = manualSplitUps.reduce(
       (sum, item) => sum + (Number(item.amount) || 0),
       0
     );
 
-    // Variance = Actual - Expected
     const variance = actualClosingBalance - expectedClosingBalance;
     const isBalanced = Math.abs(variance) < 0.01;
     const status: 'BALANCED' | 'DISCREPANCY' = isBalanced ? 'BALANCED' : 'DISCREPANCY';
 
+    const fp = liveSummary.financialPosition;
+    const countedCashInHand = manualSplitUps
+      .filter((s) => /cash|drawer|counter/i.test(s.sourceName))
+      .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+    const effectiveCashInHand = countedCashInHand > 0 ? countedCashInHand : fp.cashInHand;
+
+    const grossAmount = actualClosingBalance + fp.amountToGet;
+    const netAmount = actualClosingBalance + fp.amountToGet - fp.amountToGive;
+
     let warningMessage: string | null = null;
     if (!isBalanced) {
       const diffFormatted = Math.abs(variance).toLocaleString('en-IN');
-      if (variance > 0) {
-        warningMessage = `⚠️ Discrepancy Warning: Day closing is NOT balanced! You have an excess cash surplus of ₹${diffFormatted}. (Actual ₹${actualClosingBalance.toLocaleString('en-IN')} vs Expected ₹${expectedClosingBalance.toLocaleString('en-IN')}).`;
-      } else {
-        warningMessage = `⚠️ Discrepancy Warning: Day closing is NOT balanced! You have a cash shortage of ₹${diffFormatted}. (Actual ₹${actualClosingBalance.toLocaleString('en-IN')} vs Expected ₹${expectedClosingBalance.toLocaleString('en-IN')}).`;
-      }
+      warningMessage =
+        variance > 0
+          ? `⚠️ Discrepancy Warning: Excess cash surplus of +₹${diffFormatted} (Actual ₹${actualClosingBalance.toLocaleString('en-IN')} vs Expected ₹${expectedClosingBalance.toLocaleString('en-IN')}).`
+          : `⚠️ Discrepancy Warning: Cash shortage of -₹${diffFormatted} (Actual ₹${actualClosingBalance.toLocaleString('en-IN')} vs Expected ₹${expectedClosingBalance.toLocaleString('en-IN')}).`;
     }
 
-    const existing = await this.closingRepo.findByDate(date);
-    let closingRecord: IDailyClosing;
-
-    if (existing) {
-      // Audit log edit
-      const editLogs = existing.editLogs || [];
-      if (existing.actualClosingBalance !== actualClosingBalance) {
-        editLogs.push({
-          editedAt: new Date(),
-          previousActual: existing.actualClosingBalance,
-          newActual: actualClosingBalance,
-          previousVariance: existing.variance,
-          newVariance: variance,
-          reason: notes || 'Updated closing figures',
-        });
-      }
-
-      existing.openingBalance = finalOpeningBalance;
-      existing.previousClosingCash = finalPreviousClosingCash;
-      existing.afterClosingExpenses = finalAfterClosingExpenses;
-      existing.afterClosingCollections = finalAfterClosingCollections;
-      existing.dayBookSales = dayBookSales;
-      existing.customerNet = customerNet;
-      existing.customerRepayments = customerRepayments;
-      existing.customerCreditGiven = customerCreditGiven;
-      existing.expenseTotal = expenseTotal;
-      existing.creditCardNet = creditCardNet;
-      existing.creditCardDrawn = creditCardDrawn;
-      existing.creditCardPayment = creditCardPayment;
-      existing.expectedClosingBalance = expectedClosingBalance;
-      existing.manualSplitUps = manualSplitUps;
-      existing.actualClosingBalance = actualClosingBalance;
-      existing.variance = variance;
-      existing.status = status;
-      existing.notes = notes;
-      existing.closedAt = new Date();
-      existing.editLogs = editLogs;
-
-      closingRecord = await existing.save();
-    } else {
-      closingRecord = await DailyClosingModel.create({
-        date,
-        openingBalance: finalOpeningBalance,
-        previousClosingCash: finalPreviousClosingCash,
-        afterClosingExpenses: finalAfterClosingExpenses,
-        afterClosingCollections: finalAfterClosingCollections,
-        dayBookSales,
-        customerNet,
-        customerRepayments,
-        customerCreditGiven,
-        expenseTotal,
-        creditCardNet,
-        creditCardDrawn,
-        creditCardPayment,
-        expectedClosingBalance,
-        manualSplitUps,
-        actualClosingBalance,
-        variance,
-        status,
-        notes,
-        isClosed: true,
-        closedAt: new Date(),
+    const isSameDayEdit = !!existing.isClosed;
+    const editLogs = existing.editLogs || [];
+    if (isSameDayEdit) {
+      editLogs.push({
+        editedAt: new Date(),
+        previousActual: existing.actualClosingBalance,
+        newActual: actualClosingBalance,
+        previousVariance: existing.variance,
+        newVariance: variance,
+        reason: notes || 'Same-day closing edit',
       });
     }
+
+    existing.dayBookSales = dayBookSales;
+    existing.customerNet = customerCashNetToday;
+    existing.customerRepayments = customerRepayments;
+    existing.customerCreditGiven = customerCreditGiven;
+    existing.customerToGet = liveSummary.customerBook.customerToGet;
+    existing.customerToGive = liveSummary.customerBook.customerToGive;
+    existing.customerCollectionNet = liveSummary.customerBook.customerCollectionNet;
+    existing.expenseTotal = expenseTotal;
+    existing.creditCardNet = creditCardNet;
+    existing.creditCardDrawn = creditCardDrawn;
+    existing.creditCardPayment = creditCardPayment;
+    existing.expectedClosingBalance = expectedClosingBalance;
+    existing.manualSplitUps = manualSplitUps;
+    existing.actualClosingBalance = actualClosingBalance;
+    existing.variance = variance;
+    existing.status = status;
+    existing.notes = notes;
+    existing.isClosed = true;
+    existing.closedAt = new Date();
+    existing.cashInHand = effectiveCashInHand;
+    existing.totalLiquidAmount = actualClosingBalance;
+    existing.amountToGet = fp.amountToGet;
+    existing.amountToGive = fp.amountToGive;
+    existing.grossAmount = grossAmount;
+    existing.netAmount = netAmount;
+    existing.editLogs = editLogs;
+
+    const closingRecord = await existing.save();
 
     return {
       closing: closingRecord,
       isBalanced,
+      isSameDayEdit,
       variance,
       warningMessage,
+      actionMode: 'EDIT_CLOSE' as DayActionMode,
     };
   }
 
@@ -551,29 +807,6 @@ export class DailyClosingService {
    */
   async getTimelineHistory(daysCount = 14) {
     const todayStr = getTodayIST();
-
-    // 1. Current liabilities (Credit cards & supplier payables)
-    const cards = await CreditCardModel.find({ isActive: true });
-    const totalCardDebt = cards.reduce((sum, c) => sum + (c.totalOutstanding || 0), 0);
-
-    const payables = await PayableModel.find({ status: 'ACTIVE' });
-    const totalPayableDebt = payables.reduce((sum, p) => sum + (p.balancePending || 0), 0);
-
-    const totalLiabilities = totalCardDebt + totalPayableDebt;
-
-    // 2. Current live liquid cash from accounts
-    const accounts = await AccountModel.find({ isActive: true });
-    const currentGrossLiquidCash = accounts.reduce((sum, a) => sum + (a.balance || 0), 0);
-    const currentNetLiquidCash = currentGrossLiquidCash - totalLiabilities;
-
-    // 3. Find all saved closings
-    const savedClosings = await DailyClosingModel.find().sort({ date: -1 }).limit(365);
-    const savedMap = new Map<string, IDailyClosing>();
-    for (const c of savedClosings) {
-      savedMap.set(c.date, c);
-    }
-
-    // 4. Generate dates in chronological order (oldest to newest) with safe limits
     const safeDaysCount = Math.min(Math.max(1, Number(daysCount) || 14), 90);
     const dates: string[] = [];
     for (let i = safeDaysCount - 1; i >= 0; i--) {
@@ -585,17 +818,30 @@ export class DailyClosingService {
     const globalStart = getStartOfDayIST(minDateStr);
     const globalEnd = getEndOfDayIST(maxDateStr);
 
-    // BATCH AGGREGATION: Pre-aggregate daybook, expenses, credit cards, and customer credits
-    // across the whole timeline date range in 4 parallel queries instead of 4 * N queries in a loop!
-    const [dayBookAgg, expenseAgg, cardAgg, creditAgg] = await Promise.all([
-      // 1. Day book total sales and count by date string
+    // Execute ALL read-only timeline queries in parallel with .lean()
+    const [
+      cards,
+      payables,
+      allCredits,
+      accounts,
+      savedClosings,
+      priorClosed,
+      earliestClosed,
+      dayBookAgg,
+      expenseAgg,
+      cardAgg,
+      creditAgg,
+    ] = await Promise.all([
+      CreditCardModel.find({ isActive: true }).select('totalOutstanding').lean(),
+      PayableModel.find({ status: 'ACTIVE' }).select('balancePending').lean(),
+      CreditModel.find().select('balanceDue').lean(),
+      AccountModel.find({ isActive: true }).select('balance type').lean(),
+      DailyClosingModel.find().sort({ date: -1 }).limit(365).lean(),
+      DailyClosingModel.findOne({ date: { $lt: minDateStr }, isClosed: true }).sort({ date: -1 }).lean(),
+      DailyClosingModel.findOne({ isClosed: true }).sort({ date: 1 }).lean(),
+
       DayBookEntryModel.aggregate([
-        {
-          $match: {
-            date: { $gte: globalStart, $lte: globalEnd },
-            isDeleted: { $ne: true },
-          },
-        },
+        { $match: { date: { $gte: globalStart, $lte: globalEnd }, isDeleted: { $ne: true } } },
         {
           $group: {
             _id: { $dateToString: { format: '%Y-%m-%d', date: '$date', timezone: '+05:30' } },
@@ -604,14 +850,9 @@ export class DailyClosingService {
           },
         },
       ]),
-      // 2. Expenses total by date string
+
       ExpenseModel.aggregate([
-        {
-          $match: {
-            date: { $gte: globalStart, $lte: globalEnd },
-            isDeleted: { $ne: true },
-          },
-        },
+        { $match: { date: { $gte: globalStart, $lte: globalEnd }, isDeleted: { $ne: true } } },
         {
           $group: {
             _id: { $dateToString: { format: '%Y-%m-%d', date: '$date', timezone: '+05:30' } },
@@ -620,13 +861,9 @@ export class DailyClosingService {
           },
         },
       ]),
-      // 3. Credit card transactions by date string and type
+
       CreditCardTransactionModel.aggregate([
-        {
-          $match: {
-            date: { $gte: globalStart, $lte: globalEnd },
-          },
-        },
+        { $match: { date: { $gte: globalStart, $lte: globalEnd } } },
         {
           $group: {
             _id: {
@@ -638,15 +875,10 @@ export class DailyClosingService {
           },
         },
       ]),
-      // 4. Customer book credits/repayments by date string and type
+
       CreditModel.aggregate([
         { $unwind: '$entries' },
-        {
-          $match: {
-            'entries.date': { $gte: globalStart, $lte: globalEnd },
-            'entries.isDeleted': { $ne: true },
-          },
-        },
+        { $match: { 'entries.date': { $gte: globalStart, $lte: globalEnd }, 'entries.isDeleted': { $ne: true } } },
         {
           $group: {
             _id: {
@@ -660,7 +892,20 @@ export class DailyClosingService {
       ]),
     ]);
 
-    // Build lookup maps for O(1) in-memory resolution
+    const totalCardDebt = cards.reduce((sum, c) => sum + Math.max(0, c.totalOutstanding || 0), 0);
+    const totalPayableDebt = payables.reduce((sum, p) => sum + (p.balancePending > 0 ? p.balancePending : 0), 0);
+    const totalCustomerToGet = allCredits.reduce((sum, c) => sum + (c.balanceDue > 0 ? c.balanceDue : 0), 0);
+    const totalCustomerToGive = allCredits.reduce((sum, c) => sum + (c.balanceDue < 0 ? Math.abs(c.balanceDue) : 0), 0);
+    const totalLiabilities = totalCardDebt + totalPayableDebt + totalCustomerToGive;
+
+    const currentGrossLiquidCash = accounts.reduce((sum, a) => sum + (a.balance || 0), 0);
+    const currentNetLiquidCash = currentGrossLiquidCash + totalCustomerToGet - totalLiabilities;
+
+    const savedMap = new Map<string, any>();
+    for (const c of savedClosings) {
+      savedMap.set(c.date, c);
+    }
+
     const dayBookMap = new Map<string, { totalSales: number; count: number }>();
     for (const r of dayBookAgg) {
       if (r._id) dayBookMap.set(r._id, { totalSales: r.totalSales, count: r.count });
@@ -693,50 +938,42 @@ export class DailyClosingService {
       if (!d) continue;
       if (!creditMap.has(d)) creditMap.set(d, { repayments: 0, creditGiven: 0, count: 0 });
       const item = creditMap.get(d)!;
-      if (type === CreditTransactionType.REPAYMENT) {
-        item.repayments += r.total;
-      } else if (type === CreditTransactionType.GIVEN) {
-        item.creditGiven += r.total;
-      }
+      if (type === CreditTransactionType.REPAYMENT) item.repayments += r.total;
+      else if (type === CreditTransactionType.GIVEN) item.creditGiven += r.total;
       item.count += r.count;
     }
 
-    // 5. Baseline opening balance before dates[0]
+    // Baseline opening balance before dates[0]
     let runningOpening = 0;
-    const priorClosing = await DailyClosingModel.findOne({ date: { $lt: dates[0] } }).sort({ date: -1 });
-    if (priorClosing) {
-      runningOpening = priorClosing.actualClosingBalance;
+    if (priorClosed) {
+      runningOpening = priorClosed.actualClosingBalance;
     } else {
       const firstSaved = savedMap.get(dates[0]);
       if (firstSaved) {
         runningOpening = firstSaved.openingBalance;
-      } else {
-        const earliestClosing = await DailyClosingModel.findOne().sort({ date: 1 });
-        if (earliestClosing && dates[0] >= earliestClosing.date) {
-          runningOpening = earliestClosing.actualClosingBalance;
-        } else {
-          runningOpening = 0;
-        }
+      } else if (earliestClosed && dates[0] >= earliestClosed.date) {
+        runningOpening = earliestClosed.actualClosingBalance;
       }
     }
 
     const timeline = [];
 
-    // 6. Chronological forward roll
     for (const dateStr of dates) {
       const isToday = dateStr === todayStr;
       const saved = savedMap.get(dateStr);
 
-      if (saved) {
+      if (saved && saved.isClosed) {
         const isBalanced = saved.status === 'BALANCED' || saved.variance === 0;
         const grossCash = saved.actualClosingBalance;
-        const netCash = grossCash - totalCardDebt;
+        const netCash = saved.netAmount || grossCash + (saved.amountToGet || 0) - (saved.amountToGive || totalCardDebt);
 
         timeline.push({
           date: dateStr,
           status: isBalanced ? 'CLOSED_BALANCED' : 'CLOSED_DISCREPANCY',
           displayStatus: isBalanced ? 'Closed (Balanced)' : 'Closed (Discrepancy)',
           isSaved: true,
+          isOpened: true,
+          isClosed: true,
           isToday,
           openingBalance: saved.openingBalance,
           dayBookSales: saved.dayBookSales,
@@ -755,13 +992,13 @@ export class DailyClosingService {
           netCashBalance: netCash,
           manualSplitUps: saved.manualSplitUps || [],
           notes: saved.notes || '',
+          openedAt: saved.openedAt,
           closedAt: saved.closedAt,
         });
 
-        // The actual counted closing balance rolls into the next day's opening
         runningOpening = saved.actualClosingBalance;
       } else {
-        // Fast O(1) in-memory resolution from pre-aggregated queries (zero extra queries!)
+        const effectiveOpen = saved?.isOpened ? saved.openingBalance : runningOpening;
         const dayBookSales = dayBookMap.get(dateStr)?.totalSales || 0;
         const expenseTotal = expenseMap.get(dateStr)?.totalExpense || 0;
         const cData = creditMap.get(dateStr) || { repayments: 0, creditGiven: 0, count: 0 };
@@ -773,35 +1010,38 @@ export class DailyClosingService {
         const cardNet = cardData.drawn - cardData.payment;
 
         const hasActivity =
+          !!saved?.isOpened ||
           dayBookSales > 0 ||
           expenseTotal > 0 ||
           customerRepayments > 0 ||
           customerCreditGiven > 0 ||
           cardData.count > 0;
 
-        const expected = runningOpening + dayBookSales + customerNet - expenseTotal + cardNet;
+        const expected = effectiveOpen + dayBookSales + customerNet - expenseTotal + cardNet;
 
         let status: 'OPENING' | 'NOT_CLOSED' | 'OPENING_ONLY';
         let displayStatus: string;
 
         if (isToday) {
           status = 'OPENING';
-          displayStatus = 'Opening (Awaiting Close)';
+          displayStatus = saved?.isOpened ? 'Opened (Awaiting Close)' : 'Ready to Open';
         } else if (hasActivity) {
           status = 'NOT_CLOSED';
-          displayStatus = 'Not Closed (Missed)';
+          displayStatus = 'Not Closed (Cutoff Passed)';
         } else {
           status = 'OPENING_ONLY';
-          displayStatus = 'Opening Only (No Activity)';
+          displayStatus = 'No Activity';
         }
 
         timeline.push({
           date: dateStr,
           status,
           displayStatus,
-          isSaved: false,
+          isSaved: !!saved?.isOpened,
+          isOpened: !!saved?.isOpened,
+          isClosed: false,
           isToday,
-          openingBalance: runningOpening,
+          openingBalance: effectiveOpen,
           dayBookSales,
           customerNet,
           customerRepayments,
@@ -815,21 +1055,25 @@ export class DailyClosingService {
           cardLiabilities: totalCardDebt,
           payableLiabilities: totalPayableDebt,
           totalLiabilities,
-          netCashBalance: expected - totalCardDebt,
+          netCashBalance: expected + totalCustomerToGet - totalLiabilities,
           manualSplitUps: [],
-          notes: isToday ? 'Active day open' : hasActivity ? 'Closing was missed / not finalized' : 'No entries recorded',
+          notes: isToday
+            ? saved?.isOpened
+              ? 'Day opened — close before 11:59 PM'
+              : 'Ready to Open the Day'
+            : hasActivity
+            ? 'Not closed by 11:59 PM cutoff'
+            : 'No entries recorded',
+          openedAt: saved?.openedAt,
         });
 
-        // For an unclosed day, roll expected cash forward into next day's opening
         runningOpening = expected;
       }
     }
 
-    // 7. Reverse so newest (today) is at the top
     timeline.reverse();
 
-    // 8. Compute Period Audit Metrics
-    const closedDays = timeline.filter((t) => t.isSaved && t.status.startsWith('CLOSED'));
+    const closedDays = timeline.filter((t) => t.isClosed && t.status.startsWith('CLOSED'));
     const closedCount = closedDays.length;
     const balancedCount = closedDays.filter((t) => t.status === 'CLOSED_BALANCED' || t.variance === 0).length;
     const discrepancyCount = closedDays.filter((t) => t.status === 'CLOSED_DISCREPANCY' || (t.variance !== null && t.variance !== 0)).length;

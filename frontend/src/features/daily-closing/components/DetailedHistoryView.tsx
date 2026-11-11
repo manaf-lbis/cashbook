@@ -562,13 +562,13 @@ export const DetailedHistoryView: React.FC<DetailedHistoryViewProps> = ({ onSele
 
                     {/* Action button */}
                     <Button
-                      variant={isNotClosed ? 'danger' : isToday ? 'primary' : 'outline'}
+                      variant={isToday ? 'primary' : 'outline'}
                       size="sm"
                       onClick={() => onSelectDate(item.date)}
                       rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
                       className="text-xs font-bold flex-1 lg:flex-none justify-center"
                     >
-                      {isNotClosed ? 'Close Day Now' : isToday ? 'Open Register' : 'Review Register'}
+                      {isToday ? (item.isClosed ? 'Edit Closing' : item.isOpened ? 'Close the Day' : 'Open the Day') : 'View Record'}
                     </Button>
                   </div>
                 </div>

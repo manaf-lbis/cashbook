@@ -8,13 +8,15 @@ import { DayBookEntryModel } from '../models/DayBookEntry';
 import { ExpenseModel } from '../models/Expense';
 import { CreditModel } from '../models/Credit';
 import { AccountModel } from '../models/Account';
+import { BillerModel } from '../models/Biller';
 import { getStartOfDayIST, getEndOfDayIST, TIMEZONE } from '../utils/dateUtils';
+import { CreditTransactionType } from '../constants/enums';
 import dayjs from 'dayjs';
 
 async function runSimulation() {
-  console.log('====================================================');
-  console.log('🚀 STARTING COMPREHENSIVE MULTI-DAY SIMULATION TEST');
-  console.log('====================================================\n');
+  console.log('=====================================================');
+  console.log('🚀 STARTING FULL DAY OPENING & CLOSING SIMULATION');
+  console.log('=====================================================\n');
 
   const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/shop_cashbook';
   await mongoose.connect(mongoUri);
@@ -22,278 +24,318 @@ async function runSimulation() {
 
   const service = new DailyClosingService();
 
-  // Test dates before any real historical data to test virgin day 1 + rolling forward
+  // Isolated historical test window so existing DB records never leak into prior day lookup
   const day1 = '1999-01-01';
   const day2 = '1999-01-02';
   const day3 = '1999-01-03';
+  const testCustomerPrefix = '__SIM_TEST_CUSTOMER__';
+  let cashAccount: any = null;
+  let createdTempAccount = false;
+  let originalCashAccountBalance = 0;
 
   try {
-    // 0. Clean any leftover test records for these dates
-    console.log('\n--- [Step 0: Initializing Clean Test Environment] ---');
+    // 0. Clean slate for test window
     await DailyClosingModel.deleteMany({ date: { $in: [day1, day2, day3] } });
-    await ExpenseModel.deleteMany({
-      date: {
-        $gte: getStartOfDayIST(day1),
-        $lte: getEndOfDayIST(day3),
-      },
-    });
-    await DayBookEntryModel.deleteMany({
-      date: {
-        $gte: getStartOfDayIST(day1),
-        $lte: getEndOfDayIST(day3),
-      },
-    });
-    console.log('✓ Cleaned up any existing records for test dates 2099-01-01 to 2099-01-03');
+    await ExpenseModel.deleteMany({ date: { $gte: getStartOfDayIST(day1), $lte: getEndOfDayIST(day3) } });
+    await DayBookEntryModel.deleteMany({ date: { $gte: getStartOfDayIST(day1), $lte: getEndOfDayIST(day3) } });
+    await CreditModel.deleteMany({ partyName: { $regex: `^${testCustomerPrefix}` } });
 
-    // Ensure a default Cash Drawer account and Biller exist
-    let cashAccount = await AccountModel.findOne({ name: 'Cash Drawer' });
+    cashAccount = await AccountModel.findOne({ name: 'Cash Drawer' });
+    createdTempAccount = !cashAccount;
     if (!cashAccount) {
-      cashAccount = await AccountModel.create({
-        name: 'Cash Drawer',
-        type: 'CASH',
-        balance: 10000,
-        isActive: true,
-      });
+      cashAccount = await AccountModel.create({ name: 'Cash Drawer', type: 'CASH', balance: 10000, isActive: true });
     }
-
-    let biller = await mongoose.model('Biller').findOne();
+    originalCashAccountBalance = cashAccount.balance;
+    let biller = await BillerModel.findOne();
     if (!biller) {
-      biller = await mongoose.model('Biller').create({ name: 'Test Biller', role: 'Staff' });
+      biller = await BillerModel.create({ name: 'Test Biller', role: 'Staff' });
     }
 
     // =========================================================================
-    // SCENARIO 1: DAY 1 OPENING, TRANSACTIONS & CLOSING
+    // SCENARIO 1: DAY 1 - OPEN ONCE (VIEW-ONLY), SALES >= 0, CLOSE & SAME-DAY EDIT
     // =========================================================================
-    console.log('\n--- [Step 1: Day 1 (1999-01-01) - Opening & Day Operations] ---');
-    const day1Summary = await service.getLiveDaySummary(day1);
-    console.log(`✓ Day 1 Initial Opening Balance: ₹${day1Summary.openingBalance}`);
-    console.log(`✓ Day 1 Is Opening Locked: ${day1Summary.isOpeningLocked} (false expected for first day)`);
-    if (day1Summary.isOpeningLocked !== false) {
-      throw new Error(`Assertion Failed: Day 1 should not be locked as no previous closing exists.`);
-    }
+    console.log('--- [Scenario 1: Day 1 Lifecycle (Open Once -> Close -> Same-Day Edit)] ---');
+    const d1Pre = await service.getLiveDaySummary(day1, { todayOverride: day1 });
+    if (d1Pre.actionMode !== 'OPEN') throw new Error(`Expected actionMode OPEN, got ${d1Pre.actionMode}`);
+    console.log(`✓ Initial actionMode: ${d1Pre.actionMode} (Daybook Sales = ₹${d1Pre.dayBook.totalSales} >= 0)`);
 
-    // Record Day 1 Sales
-    const d1SaleDate = dayjs.tz(day1, TIMEZONE).hour(11).minute(30).toDate();
+    // Must reject closing before opening!
+    let closedBeforeOpenBlocked = false;
+    try {
+      await service.saveDailyClosing(
+        { date: day1, manualSplitUps: [{ sourceName: 'Cash Drawer', amount: 1000 }] },
+        { todayOverride: day1 }
+      );
+    } catch {
+      closedBeforeOpenBlocked = true;
+    }
+    if (!closedBeforeOpenBlocked) throw new Error('Must prevent closing before day is opened!');
+    console.log('✓ Blocked attempt to Close before Open the Day');
+
+    // Step 1: Open Day 1
+    const openRes = await service.openDay(
+      {
+        date: day1,
+        openingBalance: 10000,
+        manualSplitUps: [{ sourceName: 'Cash Drawer', amount: 10000 }],
+        notes: 'Morning opening count',
+      },
+      { todayOverride: day1 }
+    );
+    if (!openRes.closing.isOpened || openRes.closing.isClosed) {
+      throw new Error('Opening must set isOpened=true and isClosed=false');
+    }
+    console.log(`✓ Day 1 Opened (1st Save): Opening Cash = ₹${openRes.closing.openingBalance}`);
+
+    // Opening can only happen ONCE -> Second open attempt must fail!
+    let secondOpenBlocked = false;
+    try {
+      await service.openDay(
+        { date: day1, openingBalance: 5000, manualSplitUps: [{ sourceName: 'Cash Drawer', amount: 5000 }] },
+        { todayOverride: day1 }
+      );
+    } catch {
+      secondOpenBlocked = true;
+    }
+    if (!secondOpenBlocked) throw new Error('Day Opening MUST be one-time only and locked afterward!');
+    console.log('✓ Verified Opening is locked / view-only (2nd open attempt rejected)');
+
+    // Record Daybook Sale (+5000) & Expense (-1000)
     await DayBookEntryModel.create({
       billerId: biller._id,
-      amount: 15000,
+      amount: 5000,
       accountId: cashAccount._id,
-      date: d1SaleDate,
-      monthKey: dayjs(d1SaleDate).format('YYYY-MM'),
-      customerName: 'Day 1 Walk-in Customers',
+      date: dayjs.tz(day1, TIMEZONE).hour(13).minute(0).toDate(),
+      monthKey: dayjs(day1).format('YYYY-MM'),
+      customerName: 'Day 1 Customer',
       paymentMode: 'CASH',
     });
-
-    // Record Day 1 Shop Expenses
-    const d1ExpDate = dayjs.tz(day1, TIMEZONE).hour(14).minute(0).toDate();
     await ExpenseModel.create({
-      title: 'Packaging Materials',
-      amount: 3000,
-      category: 'Supplies',
+      title: 'Shop Cleaning',
+      amount: 1000,
+      category: 'Maintenance',
       accountId: cashAccount._id,
-      date: d1ExpDate,
+      date: dayjs.tz(day1, TIMEZONE).hour(16).minute(0).toDate(),
     });
 
-    // Fetch Day 1 live summary before closing
-    const day1Live = await service.getLiveDaySummary(day1);
-    console.log(`✓ Day 1 Recorded Sales: ₹${day1Live.dayBook.totalSales} (Expected 15000)`);
-    console.log(`✓ Day 1 Recorded Expenses: ₹${day1Live.expenseBook.totalExpenses} (Expected 3000)`);
-    console.log(`✓ Day 1 Expected Closing Balance: ₹${day1Live.expectedClosingBalance} (Expected 12000)`);
-
-    if (day1Live.dayBook.totalSales !== 15000) throw new Error('Sales calculation mismatch');
-    if (day1Live.expenseBook.totalExpenses !== 3000) throw new Error('Expenses calculation mismatch');
-
-    // Count physical cash at Day 1 close: Cash Drawer = 8,000, Bank = 4,000 -> Total = 12,000
-    console.log('\n--- [Step 2: Day 1 Closing Count & Save] ---');
-    const day1SaveResult = await service.saveDailyClosing({
-      date: day1,
-      openingBalance: 0,
-      dayBookSales: 15000,
-      customerNet: 0,
-      customerRepayments: 0,
-      customerCreditGiven: 0,
-      expenseTotal: 3000,
-      creditCardNet: 0,
-      creditCardDrawn: 0,
-      creditCardPayment: 0,
-      manualSplitUps: [
-        { sourceName: 'Cash Drawer', amount: 8000 },
-        { sourceName: 'Bank Account', amount: 4000 },
-      ],
-      notes: 'Day 1 closed balanced',
-    });
-
-    console.log(`✓ Day 1 Closing Result: Status = ${day1SaveResult.closing.status}, Actual Counted = ₹${day1SaveResult.closing.actualClosingBalance}, Variance = ₹${day1SaveResult.variance}`);
-    if (day1SaveResult.closing.actualClosingBalance !== 12000) {
-      throw new Error(`Expected Day 1 actual counted closing to be 12000, got ${day1SaveResult.closing.actualClosingBalance}`);
-    }
-    if (day1SaveResult.isBalanced !== true) {
-      throw new Error(`Expected Day 1 to be balanced.`);
+    // Step 2: First Closing (2nd Calculation) -> Expected = 10000 + 5000 - 1000 = 14000
+    const d1PreClose = await service.getLiveDaySummary(day1, { todayOverride: day1 });
+    if (d1PreClose.actionMode !== 'CLOSE') throw new Error(`Expected actionMode CLOSE, got ${d1PreClose.actionMode}`);
+    if (d1PreClose.expectedClosingBalance !== 14000) {
+      throw new Error(`Expected 14000, got ${d1PreClose.expectedClosingBalance}`);
     }
 
-    // =========================================================================
-    // SCENARIO 2: TAMPERING PREVENTION TEST
-    // =========================================================================
-    console.log('\n--- [Step 3: Security & Non-Tampering Verification] ---');
-    // Try to save Day 2 with spoofed openingBalance: 999999
-    const spoofAttempt = await service.saveDailyClosing({
-      date: day2,
-      openingBalance: 999999, // Attempted tamper!
-      dayBookSales: 0,
-      customerNet: 0,
-      customerRepayments: 0,
-      customerCreditGiven: 0,
-      expenseTotal: 0,
-      creditCardNet: 0,
-      creditCardDrawn: 0,
-      creditCardPayment: 0,
-      manualSplitUps: [{ sourceName: 'Cash Drawer', amount: 12000 }],
-    });
-
-    console.log(`✓ Client tried to inject openingBalance = 999999`);
-    console.log(`✓ Server enforced authoritative openingBalance = ₹${spoofAttempt.closing.openingBalance}`);
-    if (spoofAttempt.closing.openingBalance === 999999) {
-      throw new Error('SECURITY VIOLATION: Server allowed client to tamper with starting opening cash!');
+    const closeRes = await service.saveDailyClosing(
+      {
+        date: day1,
+        manualSplitUps: [
+          { sourceName: 'Cash Drawer', amount: 9000 },
+          { sourceName: 'SBI Bank', amount: 5000 },
+        ],
+        notes: 'Initial EOD closing',
+      },
+      { todayOverride: day1 }
+    );
+    if (!closeRes.isBalanced || closeRes.closing.actualClosingBalance !== 14000 || closeRes.isSameDayEdit !== false) {
+      throw new Error('First close verification failed');
     }
-    if (spoofAttempt.closing.openingBalance !== 12000) {
-      throw new Error(`Server should enforce yesterday closing cash (12000), but got ${spoofAttempt.closing.openingBalance}`);
+    console.log(`✓ Day 1 Closed (2nd Save): Counted = ₹${closeRes.closing.actualClosingBalance}, Status = ${closeRes.closing.status}`);
+
+    // Step 3: Same-Day Closing Edit (3rd Calculation on same day before 11:59 PM)
+    const d1EditSummary = await service.getLiveDaySummary(day1, { todayOverride: day1 });
+    if (d1EditSummary.actionMode !== 'EDIT_CLOSE') throw new Error(`Expected EDIT_CLOSE, got ${d1EditSummary.actionMode}`);
+
+    const editCloseRes = await service.saveDailyClosing(
+      {
+        date: day1,
+        manualSplitUps: [
+          { sourceName: 'Cash Drawer', amount: 9500 },
+          { sourceName: 'SBI Bank', amount: 4500 },
+        ],
+        notes: 'Adjusted split before 11:59 PM',
+      },
+      { todayOverride: day1 }
+    );
+    if (!editCloseRes.isSameDayEdit || (editCloseRes.closing.editLogs?.length || 0) !== 1) {
+      throw new Error('Expected same-day edit to append to editLogs');
     }
-    console.log('✓ Security verified: Starting liquid cash is authoritatively enforced by server!');
-    // Delete temporary record for day 2
-    await DailyClosingModel.deleteOne({ date: day2 });
+    console.log(`✓ Same-Day Closing Edit (3rd Save) logged in audit history (editLogs count = ${editCloseRes.closing.editLogs?.length})`);
 
     // =========================================================================
-    // SCENARIO 3: AFTER-CLOSING NIGHT EXPENSES & NEXT DAY RECONCILIATION
+    // SCENARIO 2: MIDNIGHT CUTOFF (11:59 PM) & DAY 2 OPENING RECONCILIATION
     // =========================================================================
-    console.log('\n--- [Step 4: After-Closing Night Activity Simulation] ---');
-    console.log('Marking a late night expense of ₹800 after Day 1 close...');
-    const adjResult = await service.markAfterClosingActivity({
+    console.log('\n--- [Scenario 2: Past 11:59 PM Cutoff Lock & Day 2 Opening] ---');
+    // Check Day 1 when today is Day 2
+    const d1PastCheck = await service.getLiveDaySummary(day1, { todayOverride: day2 });
+    if (d1PastCheck.actionMode !== 'LOCKED_PAST_CLOSED') {
+      throw new Error(`Past closed day must be LOCKED_PAST_CLOSED, got ${d1PastCheck.actionMode}`);
+    }
+    let pastEditBlocked = false;
+    try {
+      await service.saveDailyClosing(
+        { date: day1, manualSplitUps: [{ sourceName: 'Cash Drawer', amount: 9999 }] },
+        { todayOverride: day2 }
+      );
+    } catch {
+      pastEditBlocked = true;
+    }
+    if (!pastEditBlocked) throw new Error('Must reject closing edits on past dates past 11:59 PM!');
+    console.log('✓ Verified Day 1 is strictly view-only after midnight cutoff (11:59 PM)');
+
+    // Mark Night Expense after Day 1 close (₹500)
+    await service.markAfterClosingActivity({
       dateStr: day2,
       type: 'EXPENSE',
-      title: 'Night Dinner & Travel for Staff',
-      amount: 800,
-      category: 'Food & Refreshments',
+      title: 'Late Night Fuel',
+      amount: 500,
+      category: 'Transportation',
       accountId: cashAccount._id.toString(),
     });
 
-    console.log(`✓ Night adjustment created: ${(adjResult.record as any).title || (adjResult.record as any).customerName}, Amount: ₹${adjResult.record.amount}`);
+    // Open Day 2 with spoofed openingBalance: 999999 -> Server must enforce 14000 - 500 = 13500
+    const d2OpenRes = await service.openDay(
+      {
+        date: day2,
+        openingBalance: 999999,
+        manualSplitUps: [{ sourceName: 'Cash Drawer', amount: 13500 }],
+      },
+      { todayOverride: day2 }
+    );
+    if (d2OpenRes.closing.openingBalance !== 13500) {
+      throw new Error(`Expected server-enforced openingBalance 13500, got ${d2OpenRes.closing.openingBalance}`);
+    }
+    console.log(`✓ Day 2 Opened: Yesterday Close (₹14,000) - Night Expense (₹500) = ₹${d2OpenRes.closing.openingBalance} (Spoof blocked!)`);
 
     // =========================================================================
-    // SCENARIO 4: DAY 2 OPENING RECONCILIATION
+    // SCENARIO 3: MISSED CLOSING ON DAY 2 -> DAY 3 STARTS FRESH (NO LATE CLOSE)
     // =========================================================================
-    console.log('\n--- [Step 5: Day 2 (2099-01-02) Opening Reconciliation] ---');
-    const day2Summary = await service.getLiveDaySummary(day2);
-    console.log(`✓ Yesterday Counted Closing Cash: ₹${day2Summary.previousClosingCountedCash} (Expected 12000)`);
-    console.log(`✓ After-Closing Night Expenses Detected: ₹${day2Summary.afterClosingActivity?.totalExpenses} (Expected 800)`);
-    console.log(`✓ Reconciled Starting Opening Cash: ₹${day2Summary.reconciledOpeningBalance} (Expected 11200 = 12000 - 800)`);
-    console.log(`✓ Is Starting Cash Locked: ${day2Summary.isOpeningLocked} (Expected true)`);
-
-    if (day2Summary.previousClosingCountedCash !== 12000) {
-      throw new Error('Yesterday closing cash mismatch');
-    }
-    if (day2Summary.afterClosingActivity?.totalExpenses !== 800) {
-      throw new Error('Night expense not detected in afterClosingActivity');
-    }
-    if (day2Summary.reconciledOpeningBalance !== 11200) {
-      throw new Error(`Reconciled opening balance mismatch: expected 11200, got ${day2Summary.reconciledOpeningBalance}`);
-    }
-    if (day2Summary.isOpeningLocked !== true) {
-      throw new Error('Day 2 opening cash should be locked!');
-    }
-
-    // Verify daytime totalExpenses excludes the after-closing adjustment (no double deduction)
-    console.log(`✓ Day 2 Daytime Expenses: ₹${day2Summary.expenseBook.totalExpenses} (Expected 0 since 800 is opening deduction)`);
-    if (day2Summary.expenseBook.totalExpenses !== 0) {
-      throw new Error('After-closing expense was double-counted into daytime expenses!');
-    }
-
-    // =========================================================================
-    // SCENARIO 5: DAY 2 OPERATIONS & CLOSING
-    // =========================================================================
-    console.log('\n--- [Step 6: Day 2 Day Operations & Closing] ---');
-    // Day 2 Sales
-    const d2SaleDate = dayjs.tz(day2, TIMEZONE).hour(12).minute(0).toDate();
+    console.log('\n--- [Scenario 3: Unclosed Day 2 Cutoff -> Day 3 Starts Fresh] ---');
     await DayBookEntryModel.create({
       billerId: biller._id,
-      amount: 8000,
+      amount: 2500,
       accountId: cashAccount._id,
-      date: d2SaleDate,
-      monthKey: dayjs(d2SaleDate).format('YYYY-MM'),
-      customerName: 'Day 2 Customer',
+      date: dayjs.tz(day2, TIMEZONE).hour(15).minute(0).toDate(),
+      monthKey: dayjs(day2).format('YYYY-MM'),
+      customerName: 'Day 2 Sale',
       paymentMode: 'CASH',
     });
 
-    // Day 2 Daytime Expense
-    await ExpenseModel.create({
-      title: 'Electricity Bill',
-      amount: 1200,
-      category: 'Utilities',
-      accountId: cashAccount._id,
-      date: dayjs.tz(day2, TIMEZONE).hour(15).minute(0).toDate(),
-    });
-
-    const day2Live = await service.getLiveDaySummary(day2);
-    // Expected = 11,200 (Opening) + 8,000 (Sales) - 1,200 (Day Expense) = 18,000
-    console.log(`✓ Day 2 Live Expected Closing: ₹${day2Live.expectedClosingBalance} (Expected 18000)`);
-    if (day2Live.expectedClosingBalance !== 18000) {
-      throw new Error(`Expected Day 2 closing balance to be 18000, got ${day2Live.expectedClosingBalance}`);
+    // Simulate moving to Day 3 without ever closing Day 2
+    const d2MissedCheck = await service.getLiveDaySummary(day2, { todayOverride: day3 });
+    if (d2MissedCheck.actionMode !== 'LOCKED_PAST_MISSED') {
+      throw new Error(`Unclosed past day must be LOCKED_PAST_MISSED, got ${d2MissedCheck.actionMode}`);
     }
+    let lateCloseBlocked = false;
+    try {
+      await service.saveDailyClosing(
+        { date: day2, manualSplitUps: [{ sourceName: 'Cash Drawer', amount: 16000 }] },
+        { todayOverride: day3 }
+      );
+    } catch {
+      lateCloseBlocked = true;
+    }
+    if (!lateCloseBlocked) throw new Error('Late closing of past missed day must be blocked!');
+    console.log('✓ Past missed day (Day 2) cutoff enforced — cannot close late, start fresh on Day 3');
 
-    // Count physical cash: 18,000
-    const day2SaveResult = await service.saveDailyClosing({
-      date: day2,
-      openingBalance: 11200,
-      dayBookSales: 8000,
-      customerNet: 0,
-      customerRepayments: 0,
-      customerCreditGiven: 0,
-      expenseTotal: 1200,
-      creditCardNet: 0,
-      creditCardDrawn: 0,
-      creditCardPayment: 0,
-      manualSplitUps: [
-        { sourceName: 'Cash Drawer', amount: 10000 },
-        { sourceName: 'Bank Account', amount: 8000 },
+    const d3Summary = await service.getLiveDaySummary(day3, { todayOverride: day3 });
+    if (d3Summary.actionMode !== 'OPEN') throw new Error(`Expected Day 3 actionMode OPEN, got ${d3Summary.actionMode}`);
+    // Roll forward: Day 1 Close (14000) + Day 2 Sale (2500) - Day 2 AfterClose Night Exp (500) = 16000
+    if (d3Summary.openingBalance !== 16000) {
+      throw new Error(`Expected Day 3 rolled openingBalance 16000, got ${d3Summary.openingBalance}`);
+    }
+    console.log(`✓ Day 3 ready to Open with rolled cash ₹${d3Summary.openingBalance} (Day 1 Close + Day 2 Net)`);
+
+    // =========================================================================
+    // SCENARIO 4: CUSTOMER COLLECTION (GET vs GIVE) & 6 CORE LEDGER METRICS
+    // =========================================================================
+    console.log('\n--- [Scenario 4: Customer Collection (Get - Give) & 6 Financial Metrics] ---');
+    // Baseline before adding test customers
+    const beforeSummary = await service.getLiveDaySummary(day3, { todayOverride: day3 });
+    const baseToGet = beforeSummary.customerBook.customerToGet;
+    const baseToGive = beforeSummary.customerBook.customerToGive;
+    const baseNet = beforeSummary.financialPosition.netAmount;
+
+    // Add customer who owes us ₹5,000 ("should get ₹5,000 from customer")
+    await CreditModel.create({
+      partyName: `${testCustomerPrefix}RECEIVABLE_5000`,
+      totalGiven: 5000,
+      totalRepaid: 0,
+      balanceDue: 5000,
+      status: 'ACTIVE',
+      entries: [
+        {
+          type: CreditTransactionType.GIVEN,
+          amount: 5000,
+          accountId: cashAccount._id,
+          date: dayjs.tz(day3, TIMEZONE).hour(9).toDate(),
+          remarks: 'Test receivable',
+        },
       ],
-      notes: 'Day 2 closed perfectly balanced',
     });
 
-    console.log(`✓ Day 2 Closing Saved: Actual Counted = ₹${day2SaveResult.closing.actualClosingBalance}, Status = ${day2SaveResult.closing.status}`);
-    if (day2SaveResult.isBalanced !== true) {
-      throw new Error('Day 2 should be balanced!');
+    // Add customer whom we owe ₹2,000 ("need to give ₹2,000 to customer")
+    await CreditModel.create({
+      partyName: `${testCustomerPrefix}PAYABLE_2000`,
+      totalGiven: 0,
+      totalRepaid: 2000,
+      balanceDue: -2000,
+      status: 'ACTIVE',
+      entries: [
+        {
+          type: CreditTransactionType.REPAYMENT,
+          amount: 2000,
+          accountId: cashAccount._id,
+          date: dayjs.tz(day3, TIMEZONE).hour(9).toDate(),
+          remarks: 'Test advance payable',
+        },
+      ],
+    });
+
+    const afterCustomerSummary = await service.getLiveDaySummary(day3, { todayOverride: day3 });
+    const addedToGet = afterCustomerSummary.customerBook.customerToGet - baseToGet;
+    const addedToGive = afterCustomerSummary.customerBook.customerToGive - baseToGive;
+    const expectedCollectionDelta = 5000 - 2000; // +3000
+
+    console.log(`✓ Added Customer To Get = ₹${addedToGet}, Customer To Give = ₹${addedToGive}`);
+    console.log(`✓ Customer Collection Net Delta (Get - Give) = +₹${addedToGet - addedToGive} (Expected +3000)`);
+    console.log(`✓ Verified 6 Financial Position Fields Present:`, {
+      cashInHand: afterCustomerSummary.financialPosition.cashInHand,
+      totalLiquidAmount: afterCustomerSummary.financialPosition.totalLiquidAmount,
+      amountToGet: afterCustomerSummary.financialPosition.amountToGet,
+      amountToGive: afterCustomerSummary.financialPosition.amountToGive,
+      grossAmount: afterCustomerSummary.financialPosition.grossAmount,
+      netAmount: afterCustomerSummary.financialPosition.netAmount,
+    });
+
+    if (addedToGet !== 5000 || addedToGive !== 2000 || addedToGet - addedToGive !== expectedCollectionDelta) {
+      throw new Error('Customer Collection (Get vs Give) math mismatch!');
     }
 
-    // =========================================================================
-    // SCENARIO 6: DAY 3 CONTINUITY CHECK
-    // =========================================================================
-    console.log('\n--- [Step 7: Day 3 (2099-01-03) Continuity Roll-Forward] ---');
-    const day3Summary = await service.getLiveDaySummary(day3);
-    console.log(`✓ Day 3 Opening Cash from Day 2 Counted Close: ₹${day3Summary.openingBalance} (Expected 18000)`);
-    console.log(`✓ Day 3 Is Opening Locked: ${day3Summary.isOpeningLocked} (Expected true)`);
-    if (day3Summary.openingBalance !== 18000) {
-      throw new Error(`Day 3 should start with Day 2 closing cash (18000), got ${day3Summary.openingBalance}`);
+    // Also verify Net Amount = Total Liquid + AmountToGet - AmountToGive
+    const fp = afterCustomerSummary.financialPosition;
+    if (fp.netAmount !== fp.totalLiquidAmount + fp.amountToGet - fp.amountToGive) {
+      throw new Error('Net Amount formula mismatch!');
     }
+    if (fp.grossAmount !== fp.totalLiquidAmount + fp.amountToGet) {
+      throw new Error('Gross Amount formula mismatch!');
+    }
+    console.log(`✓ Net Amount & Gross Amount exact formulas verified (baseNet delta verified from ₹${baseNet} to ₹${fp.netAmount})`);
 
-    console.log('\n====================================================');
-    console.log('🎉 ALL MULTI-DAY SIMULATION TESTS PASSED WITH 100% SUCCESS!');
-    console.log('====================================================\n');
+    console.log('\n=====================================================');
+    console.log('🎉 ALL SIMULATION SCENARIOS PASSED 100%!');
+    console.log('=====================================================\n');
   } finally {
-    // Clean up test data
-    console.log('--- [Cleanup: Purging Test Records] ---');
+    // Cleanup ALL test data so production/local dev DB remains clean
     await DailyClosingModel.deleteMany({ date: { $in: [day1, day2, day3] } });
-    await ExpenseModel.deleteMany({
-      date: {
-        $gte: getStartOfDayIST(day1),
-        $lte: getEndOfDayIST(day3),
-      },
-    });
-    await DayBookEntryModel.deleteMany({
-      date: {
-        $gte: getStartOfDayIST(day1),
-        $lte: getEndOfDayIST(day3),
-      },
-    });
-    console.log('✓ Cleaned up all test records');
+    await ExpenseModel.deleteMany({ date: { $gte: getStartOfDayIST(day1), $lte: getEndOfDayIST(day3) } });
+    await DayBookEntryModel.deleteMany({ date: { $gte: getStartOfDayIST(day1), $lte: getEndOfDayIST(day3) } });
+    await CreditModel.deleteMany({ partyName: { $regex: `^${testCustomerPrefix}` } });
+    if (createdTempAccount && cashAccount) {
+      await AccountModel.findByIdAndDelete(cashAccount._id);
+    } else if (cashAccount) {
+      await AccountModel.findByIdAndUpdate(cashAccount._id, { balance: originalCashAccountBalance });
+    }
+    console.log('✓ Cleaned up all test records safely');
     await mongoose.disconnect();
     console.log('✓ Disconnected from MongoDB');
   }

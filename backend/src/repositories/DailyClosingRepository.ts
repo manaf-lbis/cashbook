@@ -12,6 +12,13 @@ export class DailyClosingRepository extends BaseRepository<IDailyClosing> {
 
   async findPreviousClosing(dateStr: string): Promise<IDailyClosing | null> {
     return await this._model
+      .findOne({ date: { $lt: dateStr }, isClosed: true })
+      .sort({ date: -1 })
+      .exec();
+  }
+
+  async findPreviousRecord(dateStr: string): Promise<IDailyClosing | null> {
+    return await this._model
       .findOne({ date: { $lt: dateStr } })
       .sort({ date: -1 })
       .exec();
@@ -19,7 +26,7 @@ export class DailyClosingRepository extends BaseRepository<IDailyClosing> {
 
   async getClosingHistory(limit = 30): Promise<IDailyClosing[]> {
     return await this._model
-      .find()
+      .find({ isClosed: true })
       .sort({ date: -1 })
       .limit(limit)
       .exec();

@@ -32,10 +32,12 @@ import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { useToast } from '../../context/ToastContext';
+import { useDayStatus } from '../../context/DayStatusContext';
 import { DetailedHistoryView } from './components/DetailedHistoryView';
 
 export const DailyClosingPage: React.FC = () => {
   const { showToast } = useToast();
+  const { refreshDayStatus } = useDayStatus();
 
   // Active top-level view: 'RECONCILE' or 'HISTORY'
   const [activeTab, setActiveTab] = useState<'RECONCILE' | 'HISTORY'>('RECONCILE');
@@ -90,18 +92,20 @@ export const DailyClosingPage: React.FC = () => {
           setOpeningBalance(data.openingBalance);
 
           if (!preserveReset) {
-            // Counted input fields: initialize cleanly with 0 or saved if already closed
-            const initialSplitUps = data.existingClosing?.manualSplitUps?.length
-              ? data.existingClosing.manualSplitUps.map((s) => ({
-                  sourceName: s.sourceName,
-                  amount: data.isAlreadyClosed ? s.amount : 0,
-                  notes: s.notes,
-                }))
-              : data.defaultSplitUps?.map((s) => ({ ...s, amount: 0 })) || [
-                  { sourceName: 'Cash Drawer', amount: 0 },
-                ];
+            const isPast = data.actionMode.startsWith('LOCKED_');
+            // On past view-only closed days, show saved figures; otherwise start count inputs fresh at 0
+            const initialSplitUps =
+              isPast && data.existingClosing?.manualSplitUps?.length
+                ? data.existingClosing.manualSplitUps.map((s) => ({
+                    sourceName: s.sourceName,
+                    amount: s.amount,
+                    notes: s.notes,
+                  }))
+                : data.defaultSplitUps?.map((s) => ({ ...s, amount: 0 })) || [
+                    { sourceName: 'Cash Drawer', amount: 0 },
+                  ];
             setManualSplitUps(initialSplitUps);
-            setNotes(data.existingClosing?.notes || '');
+            setNotes('');
           }
         }
       } catch (err: any) {
@@ -117,6 +121,15 @@ export const DailyClosingPage: React.FC = () => {
     fetchSummary(selectedDate);
   }, [selectedDate, fetchSummary]);
 
+  // Action Phase Modes
+  const actionMode = summary?.actionMode || 'OPEN';
+  const isOpeningMode = actionMode === 'OPEN';
+  const isClosingMode = actionMode === 'CLOSE' || actionMode === 'EDIT_CLOSE';
+  const isReadOnlyMode =
+    actionMode === 'LOCKED_PAST_CLOSED' ||
+    actionMode === 'LOCKED_PAST_MISSED' ||
+    actionMode === 'LOCKED_FUTURE';
+
   // Date Navigation
   const changeDateBy = (days: number) => {
     setSelectedDate((prev) => addDaysToDateString(prev, days));
@@ -128,26 +141,49 @@ export const DailyClosingPage: React.FC = () => {
 
   // Numbers from books
   const dayBookSales = summary?.dayBook?.totalSales || 0;
-  const customerNet = summary?.customerBook?.customerNet || 0;
+  const customerCashNetToday = summary?.customerBook?.customerNet || 0;
+  const customerToGet = summary?.customerBook?.customerToGet || 0;
+  const customerToGive = summary?.customerBook?.customerToGive || 0;
+  const customerCollectionNet = summary?.customerBook?.customerCollectionNet || 0;
   const expenseTotal = summary?.expenseBook?.totalExpenses || 0;
   const creditCardNet = summary?.creditCardBook?.creditCardNet || 0;
 
-  // Expected Closing = Opening + Daybook + Customer - Expense + Credit Card
+  // Expected Liquid Closing Cash = Starting Liquid Cash + Sales + Today Customer Cash Net - Expenses + Card Net
   const expectedClosingBalance = useMemo(() => {
-    return openingBalance + dayBookSales + customerNet - expenseTotal + creditCardNet;
-  }, [openingBalance, dayBookSales, customerNet, expenseTotal, creditCardNet]);
+    return openingBalance + dayBookSales + customerCashNetToday - expenseTotal + creditCardNet;
+  }, [openingBalance, dayBookSales, customerCashNetToday, expenseTotal, creditCardNet]);
 
-  // Actual Counted Cash across all split-ups
+  // Actual Counted Cash across all manual split-ups
   const actualClosingBalance = useMemo(() => {
     return manualSplitUps.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
   }, [manualSplitUps]);
 
-  // Variance: Actual - Expected
+  // Variance: Actual Counted - Expected Liquid
   const variance = useMemo(() => {
     return actualClosingBalance - expectedClosingBalance;
   }, [actualClosingBalance, expectedClosingBalance]);
 
   const isBalanced = Math.abs(variance) < 0.01;
+
+  // Dynamic 6 Core Financial Position Calculations (reflecting live count inputs if entered)
+  const fp = summary?.financialPosition;
+  const liveCountedCashInHand = useMemo(() => {
+    const cashRows = manualSplitUps.filter((s) => /cash|drawer|counter/i.test(s.sourceName));
+    const sum = cashRows.reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+    return sum > 0 ? sum : fp?.cashInHand || 0;
+  }, [manualSplitUps, fp?.cashInHand]);
+
+  const displayTotalLiquid =
+    actualClosingBalance > 0
+      ? actualClosingBalance
+      : summary?.isAlreadyClosed && summary.existingClosing
+      ? summary.existingClosing.actualClosingBalance
+      : expectedClosingBalance || fp?.systemTotalLiquid || 0;
+
+  const displayAmountToGet = fp?.amountToGet || 0;
+  const displayAmountToGive = fp?.amountToGive || 0;
+  const displayGrossAmount = displayTotalLiquid + displayAmountToGet;
+  const displayNetAmount = displayTotalLiquid + displayAmountToGet - displayAmountToGive;
 
   // Split-up handlers
   const handleSplitUpChange = (index: number, field: keyof IManualCashSplitUp, value: any) => {
@@ -218,8 +254,13 @@ export const DailyClosingPage: React.FC = () => {
     showToast('Counted cash input fields reset to zero', 'info');
   };
 
-  // Save Daily Closing
-  const handleSaveClosing = async () => {
+  // Primary Action: Open the Day (1st save) OR Close / Same-Day Edit (2nd+ saves up to 11:59 PM)
+  const handlePrimaryAction = async () => {
+    if (isReadOnlyMode) {
+      showToast('This day is view-only and locked.', 'info');
+      return;
+    }
+
     const hasEmpty = manualSplitUps.some((s) => !s.sourceName.trim());
     if (hasEmpty) {
       showToast('Please name all cash/bank count fields', 'error');
@@ -228,38 +269,70 @@ export const DailyClosingPage: React.FC = () => {
 
     try {
       setSaving(true);
-      const payload = {
-        date: selectedDate,
-        openingBalance,
-        dayBookSales,
-        customerNet,
-        customerRepayments: summary?.customerBook?.totalRepayments || 0,
-        customerCreditGiven: summary?.customerBook?.totalCreditGiven || 0,
-        expenseTotal,
-        creditCardNet,
-        creditCardDrawn: summary?.creditCardBook?.creditCardDrawn || 0,
-        creditCardPayment: summary?.creditCardBook?.creditCardPayment || 0,
-        manualSplitUps,
-        notes: notes.trim() || undefined,
-      };
-
-      const res = await apiClient.post<ApiResponse<any>>('/daily-closing', payload);
-      if (res.data.success) {
-        if (res.data.data.isBalanced) {
-          showToast('✅ Day closing reconciled and saved with zero discrepancy!', 'success');
-        } else {
-          showToast(
-            res.data.data.warningMessage || '⚠️ Day closing saved with discrepancy note',
-            'warning'
-          );
+      if (isOpeningMode) {
+        const res = await apiClient.post<ApiResponse<any>>('/daily-closing/open', {
+          date: selectedDate,
+          openingBalance,
+          manualSplitUps,
+          notes: notes.trim() || undefined,
+        });
+        if (res.data.success) {
+          if (res.data.data.isBalanced) {
+            showToast('✅ Day opened & locked! Opening snapshot is now view-only.', 'success');
+          } else {
+            showToast(
+              res.data.data.warningMessage || '✅ Day opened with discrepancy note. Opening locked.',
+              'warning'
+            );
+          }
+          // RESET all counted input field cash after opening so fields start clean for closing!
+          setManualSplitUps((prev) => prev.map((item) => ({ ...item, amount: 0 })));
+          setNotes('');
+          await fetchSummary(selectedDate, true /* preserveReset */);
+          await refreshDayStatus();
         }
-        // RESET all counted input field cash after save!
-        setManualSplitUps((prev) => prev.map((item) => ({ ...item, amount: 0 })));
-        setNotes('');
-        await fetchSummary(selectedDate, true /* preserveReset */);
+      } else {
+        const payload = {
+          date: selectedDate,
+          openingBalance,
+          dayBookSales,
+          customerNet: customerCashNetToday,
+          customerRepayments: summary?.customerBook?.totalRepayments || 0,
+          customerCreditGiven: summary?.customerBook?.totalCreditGiven || 0,
+          expenseTotal,
+          creditCardNet,
+          creditCardDrawn: summary?.creditCardBook?.creditCardDrawn || 0,
+          creditCardPayment: summary?.creditCardBook?.creditCardPayment || 0,
+          manualSplitUps,
+          notes: notes.trim() || undefined,
+        };
+
+        const res = await apiClient.post<ApiResponse<any>>('/daily-closing', payload);
+        if (res.data.success) {
+          const isSameDayEdit = res.data.data.isSameDayEdit;
+          if (res.data.data.isBalanced) {
+            showToast(
+              isSameDayEdit
+                ? '✅ Same-day closing updated with zero discrepancy!'
+                : '✅ Day closed and balanced with zero discrepancy!',
+              'success'
+            );
+          } else {
+            showToast(
+              res.data.data.warningMessage ||
+                (isSameDayEdit ? '⚠️ Same-day closing updated with discrepancy' : '⚠️ Day closed with discrepancy'),
+              'warning'
+            );
+          }
+          // RESET all counted input field cash after save!
+          setManualSplitUps((prev) => prev.map((item) => ({ ...item, amount: 0 })));
+          setNotes('');
+          await fetchSummary(selectedDate, true /* preserveReset */);
+          await refreshDayStatus();
+        }
       }
     } catch (err: any) {
-      showToast(err.message || 'Failed to save day closing', 'error');
+      showToast(err.message || 'Failed to save day register', 'error');
     } finally {
       setSaving(false);
     }
@@ -290,13 +363,14 @@ export const DailyClosingPage: React.FC = () => {
       });
       if (res.data.success) {
         showToast(
-          `✅ After-closing ${adjType.toLowerCase()} of ₹${amt.toLocaleString('en-IN')} recorded & reconciled!`,
+          `✅ Night ${adjType.toLowerCase()} of ₹${amt.toLocaleString('en-IN')} recorded & reconciled!`,
           'success'
         );
         setIsMarkingAfterClosing(false);
         setAdjTitle('');
         setAdjAmount('');
         await fetchSummary(selectedDate);
+        await refreshDayStatus();
       }
     } catch (err: any) {
       showToast(err.message || 'Failed to record adjustment', 'error');
@@ -399,21 +473,34 @@ export const DailyClosingPage: React.FC = () => {
                 </Button>
               </div>
 
-              {/* Status Pill */}
-              <div className="flex items-center gap-2">
-                {summary?.isAlreadyClosed ? (
-                  summary.existingClosing?.status === 'BALANCED' ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Closed & Balanced
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                      <AlertTriangle className="w-3.5 h-3.5" /> Closed with Discrepancy
-                    </span>
-                  )
-                ) : (
+              {/* Phase & Cutoff Status Pill */}
+              <div className="flex flex-wrap items-center gap-2">
+                {actionMode === 'OPEN' && (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                    <Sparkles className="w-3.5 h-3.5" /> Open Day / Reconciling
+                    <Sparkles className="w-3.5 h-3.5" /> Step 1: Ready to Open Day
+                  </span>
+                )}
+                {actionMode === 'CLOSE' && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <Clock className="w-3.5 h-3.5" /> Step 2: Day Open • Ready to Close (Till 11:59 PM)
+                  </span>
+                )}
+                {actionMode === 'EDIT_CLOSE' && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Closed Today • Same-Day Edit Allowed Till 11:59 PM
+                  </span>
+                )}
+                {(actionMode === 'LOCKED_PAST_CLOSED' || actionMode === 'LOCKED_PAST_MISSED') && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                    <Lock className="w-3.5 h-3.5" />{' '}
+                    {actionMode === 'LOCKED_PAST_CLOSED'
+                      ? 'Past Day Closed & Locked (View-Only)'
+                      : 'Cutoff Passed (11:59 PM) • View-Only'}
+                  </span>
+                )}
+                {actionMode === 'LOCKED_FUTURE' && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                    <Lock className="w-3.5 h-3.5" /> Future Date (View-Only)
                   </span>
                 )}
               </div>
@@ -421,10 +508,128 @@ export const DailyClosingPage: React.FC = () => {
 
             {loading ? (
               <div className="py-24 flex justify-center">
-                <LoadingSpinner message="Calculating day transactions..." />
+                <LoadingSpinner message="Calculating day ledgers & position..." />
               </div>
             ) : (
               <>
+                {/* 6 Core Financial Position Fields Overview (Main Ledger Tracking Objective) */}
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2 border-b border-slate-100">
+                    <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <Scale className="w-4 h-4 text-blue-600" />
+                      Daily Business Ledger & Financial Position
+                    </h3>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      Cash in Hand • Total Liquid • To Give • To Get • Gross • Net
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+                    {/* 1. Cash in Hand */}
+                    <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/70">
+                      <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
+                        1. Cash in Hand
+                      </span>
+                      <span className="text-base sm:text-lg font-black font-mono text-emerald-950 block mt-0.5">
+                        ₹{liveCountedCashInHand.toLocaleString('en-IN')}
+                      </span>
+                      <span className="text-[10px] text-emerald-700 block truncate">Drawer / Counter cash</span>
+                    </div>
+
+                    {/* 2. Total Liquid Amount */}
+                    <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200/70">
+                      <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider block">
+                        2. Total Liquid Amount
+                      </span>
+                      <span className="text-base sm:text-lg font-black font-mono text-blue-950 block mt-0.5">
+                        ₹{displayTotalLiquid.toLocaleString('en-IN')}
+                      </span>
+                      <span className="text-[10px] text-blue-700 block truncate">Cash + Bank + Wallets</span>
+                    </div>
+
+                    {/* 3. Amount We Need to Get */}
+                    <div className="p-3 rounded-xl bg-teal-50/70 border border-teal-200/80">
+                      <span className="text-[10px] font-bold text-teal-800 uppercase tracking-wider block">
+                        3. Amount to Get
+                      </span>
+                      <span className="text-base sm:text-lg font-black font-mono text-teal-900 block mt-0.5">
+                        +₹{displayAmountToGet.toLocaleString('en-IN')}
+                      </span>
+                      <span className="text-[10px] text-teal-700 block truncate">
+                        You'll Get (Customers)
+                      </span>
+                    </div>
+
+                    {/* 4. Amount We Need to Give */}
+                    <div className="p-3 rounded-xl bg-rose-50/70 border border-rose-200/80">
+                      <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider block">
+                        4. Amount to Give
+                      </span>
+                      <span className="text-base sm:text-lg font-black font-mono text-rose-900 block mt-0.5">
+                        -₹{displayAmountToGive.toLocaleString('en-IN')}
+                      </span>
+                      <span className="text-[10px] text-rose-700 block truncate">
+                        Cust Adv / Supp / Cards
+                      </span>
+                    </div>
+
+                    {/* 5. Gross Amount */}
+                    <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200/80">
+                      <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider block">
+                        5. Gross Amount
+                      </span>
+                      <span className="text-base sm:text-lg font-black font-mono text-indigo-950 block mt-0.5">
+                        ₹{displayGrossAmount.toLocaleString('en-IN')}
+                      </span>
+                      <span className="text-[10px] text-indigo-700 block truncate">Liquid + To Get</span>
+                    </div>
+
+                    {/* 6. Net Amount */}
+                    <div className="p-3 rounded-xl bg-slate-900 text-white border border-slate-800">
+                      <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block">
+                        6. Net Amount
+                      </span>
+                      <span className="text-base sm:text-lg font-black font-mono text-emerald-400 block mt-0.5">
+                        ₹{displayNetAmount.toLocaleString('en-IN')}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block truncate">Gross - To Give</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* View-Only Locked Opening Snapshot Banner (Visible once day is opened!) */}
+                {summary?.isOpened && summary.existingClosing && (
+                  <div className="bg-blue-50/70 border border-blue-200/90 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex items-start sm:items-center gap-2.5">
+                      <span className="p-2 bg-blue-100 text-blue-700 rounded-xl shrink-0">
+                        <Lock className="w-4 h-4" />
+                      </span>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-xs sm:text-sm font-bold text-blue-950">
+                            Day Opening Locked (View-Only)
+                          </h4>
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-200/70 text-blue-900">
+                            Opened Once
+                          </span>
+                        </div>
+                        <p className="text-xs text-blue-800 mt-0.5">
+                          Starting Cash: <strong className="font-mono">₹{summary.existingClosing.openingBalance.toLocaleString('en-IN')}</strong>
+                          {summary.existingClosing.openingCountedBalance !== undefined && (
+                            <> • Opening Counted: <strong className="font-mono">₹{summary.existingClosing.openingCountedBalance.toLocaleString('en-IN')}</strong></>
+                          )}
+                          {summary.existingClosing.openedAt && (
+                            <> • Opened at {new Date(summary.existingClosing.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-bold text-blue-700 bg-white px-2.5 py-1 rounded-lg border border-blue-200 self-start sm:self-auto">
+                      View-Only
+                    </span>
+                  </div>
+                )}
+
                 {/* 2-Column Clean Layout: (1) System Ledgers vs (2) Counted Cash */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                   {/* Left Column: System Ledgers (Automatic) */}
@@ -451,7 +656,9 @@ export const DailyClosingPage: React.FC = () => {
                               Starting Liquid Cash
                             </span>
                             <span className="text-[11px] text-slate-400 block mt-0.5">
-                              System reconciled from yesterday's closing cash
+                              {summary?.missedDaysCarryForward
+                                ? 'Rolled forward from last closed day + unclosed activity'
+                                : "Reconciled from yesterday's counted closing cash"}
                             </span>
                           </div>
                           <span className="text-lg sm:text-xl font-black font-mono text-slate-900">
@@ -461,11 +668,10 @@ export const DailyClosingPage: React.FC = () => {
 
                         {/* Reconciliation Sub-Breakdown */}
                         <div className="space-y-1.5 text-xs">
-                          {/* 1. Base from Yesterday's Close */}
                           <div className="flex items-center justify-between text-slate-600 bg-white p-2 rounded-lg border border-slate-100">
                             <span className="flex items-center gap-1.5 font-medium">
                               <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                              Yesterday's Counted Close:
+                              {summary?.previousClosing ? `Last Close (${formatDate(summary.previousClosing.date)}):` : "Yesterday's Counted Close:"}
                             </span>
                             <span className="font-mono font-bold text-slate-800">
                               ₹{(
@@ -476,7 +682,19 @@ export const DailyClosingPage: React.FC = () => {
                             </span>
                           </div>
 
-                          {/* 2. After-Closing Night Expenses */}
+                          {(summary?.missedDaysCarryForward || 0) !== 0 && (
+                            <div className="flex items-center justify-between text-slate-700 bg-amber-50/60 p-2 rounded-lg border border-amber-100">
+                              <span className="flex items-center gap-1.5 font-medium">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                Unclosed Intermediate Days Net:
+                              </span>
+                              <span className="font-mono font-bold">
+                                {(summary?.missedDaysCarryForward || 0) >= 0 ? '+' : ''}
+                                ₹{(summary?.missedDaysCarryForward || 0).toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                          )}
+
                           {(summary?.afterClosingActivity?.totalExpenses || 0) > 0 && (
                             <div className="flex items-center justify-between text-rose-700 bg-rose-50/70 p-2 rounded-lg border border-rose-100">
                               <span className="flex items-center gap-1.5 font-medium">
@@ -489,7 +707,6 @@ export const DailyClosingPage: React.FC = () => {
                             </div>
                           )}
 
-                          {/* 3. After-Closing Collections */}
                           {(summary?.afterClosingActivity?.totalCollections || 0) > 0 && (
                             <div className="flex items-center justify-between text-emerald-700 bg-emerald-50/70 p-2 rounded-lg border border-emerald-100">
                               <span className="flex items-center gap-1.5 font-medium">
@@ -503,22 +720,24 @@ export const DailyClosingPage: React.FC = () => {
                           )}
                         </div>
 
-                        {/* Button to Mark Night Expense / Collection */}
-                        <div className="pt-1 flex items-center justify-between">
-                          <span className="text-[11px] text-slate-400">Night expense after closing?</span>
-                          <button
-                            type="button"
-                            onClick={() => setIsMarkingAfterClosing(true)}
-                            className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                            <Plus className="w-3.5 h-3.5" /> Mark Night Expense
-                          </button>
-                        </div>
+                        {/* Optional Night Expense Marking */}
+                        {!isReadOnlyMode && (
+                          <div className="pt-1 flex items-center justify-between">
+                            <span className="text-[11px] text-slate-400">Any night expense after closing?</span>
+                            <button
+                              type="button"
+                              onClick={() => setIsMarkingAfterClosing(true)}
+                              className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> Mark Night Expense
+                            </button>
+                          </div>
+                        )}
                       </div>
 
-                      {/* Today's Transactions Simple List */}
+                      {/* Today's Ledgers Breakdown */}
                       <div className="mt-4 space-y-2.5">
-                        {/* Daybook Sales */}
+                        {/* 1. Daybook Sales (>= 0, tracked at opening and closing) */}
                         <div className="p-3 rounded-xl bg-slate-50 flex items-center justify-between">
                           <div className="flex items-center gap-2.5">
                             <span className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg">
@@ -526,7 +745,9 @@ export const DailyClosingPage: React.FC = () => {
                             </span>
                             <div>
                               <span className="text-xs font-bold text-slate-800 block">Daybook Sales</span>
-                              <span className="text-[11px] text-slate-400">Total biller sales today</span>
+                              <span className="text-[11px] text-slate-400">
+                                {summary?.dayBook?.totalEntries || 0} bills recorded today (≥ ₹0)
+                              </span>
                             </div>
                           </div>
                           <span className="font-mono font-bold text-sm text-emerald-600">
@@ -534,27 +755,40 @@ export const DailyClosingPage: React.FC = () => {
                           </span>
                         </div>
 
-                        {/* Customer Book */}
-                        <div className="p-3 rounded-xl bg-slate-50 flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <span className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
-                              <Users className="w-4 h-4" />
-                            </span>
-                            <div>
-                              <span className="text-xs font-bold text-slate-800 block">Customer Collections</span>
-                              <span className="text-[11px] text-slate-400">Net customer cash received</span>
+                        {/* 2. Customer Collection (Get - Give + Today's Cash Movement) */}
+                        <div className="p-3 rounded-xl bg-slate-50 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <span className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
+                                <Users className="w-4 h-4" />
+                              </span>
+                              <div>
+                                <span className="text-xs font-bold text-slate-800 block">
+                                  Customer Collection (Get vs Give)
+                                </span>
+                                <span className="text-[11px] text-slate-500">
+                                  Get: <strong className="text-teal-700">₹{customerToGet.toLocaleString('en-IN')}</strong> − Give:{' '}
+                                  <strong className="text-rose-700">₹{customerToGive.toLocaleString('en-IN')}</strong>
+                                </span>
+                              </div>
                             </div>
+                            <span
+                              className={`font-mono font-bold text-sm ${
+                                customerCollectionNet >= 0 ? 'text-teal-700' : 'text-rose-600'
+                              }`}
+                            >
+                              {customerCollectionNet >= 0 ? '+' : ''}₹{customerCollectionNet.toLocaleString('en-IN')}
+                            </span>
                           </div>
-                          <span
-                            className={`font-mono font-bold text-sm ${
-                              customerNet >= 0 ? 'text-blue-600' : 'text-amber-600'
-                            }`}
-                          >
-                            {customerNet >= 0 ? '+' : ''}₹{customerNet.toLocaleString('en-IN')}
-                          </span>
+                          <div className="pl-9 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-200/60 pt-1.5">
+                            <span>Today's Drawer Movement (Got - Gave):</span>
+                            <span className={`font-mono font-bold ${customerCashNetToday >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>
+                              {customerCashNetToday >= 0 ? '+' : ''}₹{customerCashNetToday.toLocaleString('en-IN')}
+                            </span>
+                          </div>
                         </div>
 
-                        {/* Expenses */}
+                        {/* 3. Shop Expenses */}
                         <div className="p-3 rounded-xl bg-slate-50 flex items-center justify-between">
                           <div className="flex items-center gap-2.5">
                             <span className="p-1.5 bg-rose-100 text-rose-700 rounded-lg">
@@ -562,7 +796,9 @@ export const DailyClosingPage: React.FC = () => {
                             </span>
                             <div>
                               <span className="text-xs font-bold text-slate-800 block">Shop Expenses</span>
-                              <span className="text-[11px] text-slate-400">Recorded expenses today</span>
+                              <span className="text-[11px] text-slate-400">
+                                {summary?.expenseBook?.totalEntries || 0} expenses today
+                              </span>
                             </div>
                           </div>
                           <span className="font-mono font-bold text-sm text-rose-600">
@@ -570,7 +806,7 @@ export const DailyClosingPage: React.FC = () => {
                           </span>
                         </div>
 
-                        {/* Credit Cards */}
+                        {/* 4. Credit Cards */}
                         <div className="p-3 rounded-xl bg-slate-50 flex items-center justify-between">
                           <div className="flex items-center gap-2.5">
                             <span className="p-1.5 bg-purple-100 text-purple-700 rounded-lg">
@@ -592,15 +828,23 @@ export const DailyClosingPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Total Expected Closing Box */}
-                    <div className="p-4 rounded-xl bg-slate-900 text-white flex items-center justify-between mt-4">
-                      <div>
-                        <span className="text-xs text-slate-400 font-semibold block">Expected Balance</span>
-                        <span className="text-xs text-slate-500">Starting cash + Net today</span>
+                    {/* Expected Liquid Cash & Market Net Worth Box */}
+                    <div className="p-4 rounded-xl bg-slate-900 text-white space-y-2 mt-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs text-slate-300 font-semibold block">Expected Liquid Cash</span>
+                          <span className="text-[11px] text-slate-400">Opening + Sales + Today Cash - Expenses + Cards</span>
+                        </div>
+                        <span className="text-xl font-black font-mono text-white">
+                          ₹{expectedClosingBalance.toLocaleString('en-IN')}
+                        </span>
                       </div>
-                      <span className="text-xl font-black font-mono text-white">
-                        ₹{expectedClosingBalance.toLocaleString('en-IN')}
-                      </span>
+                      <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Opening + Customer Collection (Get − Give):</span>
+                        <span className="font-mono font-bold text-emerald-400">
+                          ₹{(openingBalance + customerCollectionNet).toLocaleString('en-IN')}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -613,10 +857,12 @@ export const DailyClosingPage: React.FC = () => {
                             <Building2 className="w-4 h-4" />
                           </span>
                           <h3 className="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider">
-                            2. Counted Cash & Banks (Manual)
+                            2. Counted Cash & Banks ({isOpeningMode ? 'Opening' : isClosingMode ? 'Closing' : 'Locked'})
                           </h3>
                         </div>
-                        <span className="text-xs text-slate-400 font-medium">Physical & Digital Count</span>
+                        <span className="text-xs text-slate-400 font-medium">
+                          {isReadOnlyMode ? 'View-Only' : 'Physical & Digital Count'}
+                        </span>
                       </div>
 
                       {/* Quick Add Presets (Customizable with Save for Later / One-Time) */}
@@ -686,40 +932,42 @@ export const DailyClosingPage: React.FC = () => {
                         )}
 
                         {/* Preset Chips */}
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {quickPresets.map((preset) => (
-                            <div
-                              key={preset}
-                              className="group inline-flex items-center bg-slate-100 hover:bg-slate-200/90 text-slate-700 rounded-lg text-xs font-semibold pl-2.5 pr-1 py-1 transition-colors shadow-2xs"
-                            >
-                              <button
-                                type="button"
-                                onClick={() => addQuickPreset(preset)}
-                                className="cursor-pointer hover:text-blue-600 mr-1.5"
-                                title={`Add "${preset}" to today's count`}
+                        {!isReadOnlyMode && (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {quickPresets.map((preset) => (
+                              <div
+                                key={preset}
+                                className="group inline-flex items-center bg-slate-100 hover:bg-slate-200/90 text-slate-700 rounded-lg text-xs font-semibold pl-2.5 pr-1 py-1 transition-colors shadow-2xs"
                               >
-                                + {preset}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => removeQuickPresetFromArea(preset, e)}
-                                className="opacity-40 group-hover:opacity-100 hover:text-rose-600 p-0.5 rounded cursor-pointer transition-opacity"
-                                title={`Remove "${preset}" from Quick Add area`}
-                              >
-                                &times;
-                              </button>
-                            </div>
-                          ))}
+                                <button
+                                  type="button"
+                                  onClick={() => addQuickPreset(preset)}
+                                  className="cursor-pointer hover:text-blue-600 mr-1.5"
+                                  title={`Add "${preset}" to today's count`}
+                                >
+                                  + {preset}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => removeQuickPresetFromArea(preset, e)}
+                                  className="opacity-40 group-hover:opacity-100 hover:text-rose-600 p-0.5 rounded cursor-pointer transition-opacity"
+                                  title={`Remove "${preset}" from Quick Add area`}
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                            ))}
 
-                          <button
-                            type="button"
-                            onClick={() => setIsAddingCustomPreset(true)}
-                            className="px-2 py-1 text-xs font-semibold border border-dashed border-slate-300 hover:border-blue-400 text-slate-500 hover:text-blue-600 rounded-lg cursor-pointer transition-colors flex items-center gap-1"
-                            title="Add a custom account"
-                          >
-                            <Plus className="w-3 h-3" /> New
-                          </button>
-                        </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsAddingCustomPreset(true)}
+                              className="px-2 py-1 text-xs font-semibold border border-dashed border-slate-300 hover:border-blue-400 text-slate-500 hover:text-blue-600 rounded-lg cursor-pointer transition-colors flex items-center gap-1"
+                              title="Add a custom account"
+                            >
+                              <Plus className="w-3 h-3" /> New
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {/* Dynamic Split-up Input Rows */}
@@ -731,10 +979,11 @@ export const DailyClosingPage: React.FC = () => {
                           >
                             <input
                               type="text"
+                              disabled={isReadOnlyMode}
                               placeholder="Account / Cash name"
                               value={item.sourceName}
                               onChange={(e) => handleSplitUpChange(index, 'sourceName', e.target.value)}
-                              className="flex-1 min-w-0 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
+                              className="flex-1 min-w-0 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
                             />
 
                             <div className="relative w-28 sm:w-36 shrink-0">
@@ -743,56 +992,65 @@ export const DailyClosingPage: React.FC = () => {
                               </span>
                               <input
                                 type="number"
+                                disabled={isReadOnlyMode}
                                 min="0"
                                 step="any"
                                 placeholder="0"
                                 value={item.amount === 0 ? '' : item.amount}
                                 onChange={(e) => handleSplitUpChange(index, 'amount', e.target.value)}
-                                className="w-full pl-5 pr-2 py-1.5 text-xs font-black font-mono text-slate-900 bg-white border border-slate-200 rounded-lg outline-none text-right focus:border-blue-500"
+                                className="w-full pl-5 pr-2 py-1.5 text-xs font-black font-mono text-slate-900 bg-white border border-slate-200 rounded-lg outline-none text-right focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-600"
                               />
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() => removeSplitUpRow(index)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer shrink-0"
-                              title="Remove"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {!isReadOnlyMode && (
+                              <button
+                                type="button"
+                                onClick={() => removeSplitUpRow(index)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer shrink-0"
+                                title="Remove"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>
 
-                      <div className="mt-3 flex items-center justify-between">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => addSplitUpRow('')}
-                          leftIcon={<Plus className="w-3.5 h-3.5" />}
-                          className="text-xs font-bold text-blue-600 border-blue-200 bg-blue-50/50 hover:bg-blue-50"
-                        >
-                          + Add Field
-                        </Button>
+                      {!isReadOnlyMode && (
+                        <div className="mt-3 flex items-center justify-between">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addSplitUpRow('')}
+                            leftIcon={<Plus className="w-3.5 h-3.5" />}
+                            className="text-xs font-bold text-blue-600 border-blue-200 bg-blue-50/50 hover:bg-blue-50"
+                          >
+                            + Add Field
+                          </Button>
 
-                        <button
-                          type="button"
-                          onClick={handleResetCountedCash}
-                          className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
-                          title="Reset all counted cash inputs to 0"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" /> Reset Counts
-                        </button>
-                      </div>
+                          <button
+                            type="button"
+                            onClick={handleResetCountedCash}
+                            className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                            title="Reset all counted cash inputs to 0"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" /> Reset Counts
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Total Actual Counted Cash Box */}
                     <div className="p-4 rounded-xl bg-slate-900 text-white flex items-center justify-between mt-4">
                       <div>
-                        <span className="text-xs text-slate-400 font-semibold block">Total Counted Cash</span>
+                        <span className="text-xs text-slate-400 font-semibold block">
+                          {isOpeningMode ? 'Total Opening Cash Counted' : 'Total Closing Cash Counted'}
+                        </span>
                         <span className="text-[11px] text-slate-400">
-                          {summary?.isAlreadyClosed ? 'Saved closing count' : 'Becomes tomorrow’s opening starting cash'}
+                          {isOpeningMode
+                            ? 'Snapshot locks once opened (view-only)'
+                            : 'Becomes tomorrow’s opening starting cash'}
                         </span>
                       </div>
                       <span className="text-xl font-black font-mono text-emerald-400">
@@ -802,72 +1060,126 @@ export const DailyClosingPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Bottom Reconciliation Status & Finalize Action */}
+                {/* Bottom Reconciliation Warning & Clear Action Box */}
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-6 shadow-xs space-y-4">
-                  {/* Status Banner */}
-                  {isBalanced ? (
-                    <div className="p-3.5 sm:p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-                          <CheckCircle2 className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-emerald-900">Everything Matches (Zero Difference)</h4>
-                          <p className="text-xs text-emerald-700">
-                            Counted cash exactly equals expected closing balance (₹{actualClosingBalance.toLocaleString('en-IN')}).
-                          </p>
-                        </div>
-                      </div>
-                      <span className="text-xs font-black font-mono px-3 py-1 bg-emerald-200 text-emerald-900 rounded-lg self-start sm:self-auto">
-                        MATCHED
+                  {/* Same-Day Saved Info if already closed today */}
+                  {actionMode === 'EDIT_CLOSE' && summary?.existingClosing && (
+                    <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-blue-900">
+                      <span className="font-semibold">
+                        ✓ Earlier Closing Today Saved: <strong className="font-mono">₹{summary.existingClosing.actualClosingBalance.toLocaleString('en-IN')}</strong>
+                        {summary.existingClosing.closedAt && (
+                          <> at {new Date(summary.existingClosing.closedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>
+                        )}
                       </span>
-                    </div>
-                  ) : (
-                    <div className="p-3.5 sm:p-4 rounded-xl bg-rose-50 border border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                          <AlertTriangle className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-rose-900">
-                            Discrepancy of {variance > 0 ? '+' : ''}₹{variance.toLocaleString('en-IN')}
-                          </h4>
-                          <p className="text-xs text-rose-700">
-                            {variance < 0 ? (
-                              <span>Shortage: Counted ₹{actualClosingBalance.toLocaleString('en-IN')} vs Expected ₹{expectedClosingBalance.toLocaleString('en-IN')}</span>
-                            ) : (
-                              <span>Surplus: Counted ₹{actualClosingBalance.toLocaleString('en-IN')} vs Expected ₹{expectedClosingBalance.toLocaleString('en-IN')}</span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="text-xs font-black font-mono px-3 py-1 bg-rose-200 text-rose-900 rounded-lg self-start sm:self-auto">
-                        UNBALANCED
+                      <span className="text-[11px] font-bold text-blue-700">
+                        Same-Day Closing Edits Allowed Until 11:59 PM
                       </span>
                     </div>
                   )}
 
-                  {/* Notes & Save Button */}
-                  <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
-                    <input
-                      type="text"
-                      placeholder="Add closing note / remark (optional)..."
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      className="flex-1 w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-blue-500"
-                    />
+                  {/* Warning / Status Banner ALWAYS shown ABOVE the action button */}
+                  {!isReadOnlyMode && (
+                    isBalanced ? (
+                      <div className="p-3.5 sm:p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                            <CheckCircle2 className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-emerald-900">Everything Matches (Zero Difference)</h4>
+                            <p className="text-xs text-emerald-700">
+                              Counted cash exactly matches expected balance (₹{actualClosingBalance.toLocaleString('en-IN')}).
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-xs font-black font-mono px-3 py-1 bg-emerald-200 text-emerald-900 rounded-lg self-start sm:self-auto">
+                          MATCHED
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="p-3.5 sm:p-4 rounded-xl bg-rose-50 border border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                            <AlertTriangle className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-rose-900">
+                              Discrepancy Warning: {variance > 0 ? '+' : ''}₹{variance.toLocaleString('en-IN')}
+                            </h4>
+                            <p className="text-xs text-rose-700">
+                              {variance < 0 ? (
+                                <span>Shortage: Counted ₹{actualClosingBalance.toLocaleString('en-IN')} vs Expected ₹{expectedClosingBalance.toLocaleString('en-IN')}</span>
+                              ) : (
+                                <span>Surplus: Counted ₹{actualClosingBalance.toLocaleString('en-IN')} vs Expected ₹{expectedClosingBalance.toLocaleString('en-IN')}</span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-xs font-black font-mono px-3 py-1 bg-rose-200 text-rose-900 rounded-lg self-start sm:self-auto">
+                          DISCREPANCY
+                        </span>
+                      </div>
+                    )
+                  )}
 
-                    <Button
-                      size="md"
-                      variant={isBalanced ? 'success' : 'primary'}
-                      onClick={handleSaveClosing}
-                      isLoading={saving}
-                      leftIcon={<Save className="w-4 h-4" />}
-                      className="w-full sm:w-auto px-6 font-bold shadow-sm"
-                    >
-                      {isBalanced ? 'Save & Close Day' : 'Save Day with Discrepancy'}
-                    </Button>
-                  </div>
+                  {/* Action Controls OR Locked Past-Day View-Only Notice */}
+                  {isReadOnlyMode ? (
+                    <div className="p-4 rounded-xl bg-slate-100 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Lock className="w-5 h-5 text-slate-500 shrink-0" />
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-800">
+                            {actionMode === 'LOCKED_PAST_CLOSED'
+                              ? 'Past Day Record Locked (View-Only)'
+                              : actionMode === 'LOCKED_PAST_MISSED'
+                              ? 'Past Cutoff Passed (11:59 PM) — View-Only'
+                              : 'Future Date — View-Only'}
+                          </h4>
+                          <p className="text-xs text-slate-500">
+                            {actionMode === 'LOCKED_PAST_CLOSED'
+                              ? 'Closed historical registers are locked for audit integrity.'
+                              : actionMode === 'LOCKED_PAST_MISSED'
+                              ? 'Days not closed by 11:59 PM do not require late closing. Switch to Today to open the new day.'
+                              : 'You can only open or close the current active day.'}
+                          </p>
+                        </div>
+                      </div>
+                      {actionMode !== 'LOCKED_FUTURE' && (
+                        <Button size="sm" variant="primary" onClick={setDateToToday} className="shrink-0">
+                          Go to Today
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row items-center gap-3 pt-1">
+                      <input
+                        type="text"
+                        placeholder={
+                          isOpeningMode
+                            ? 'Add opening note / remark (optional)...'
+                            : 'Add closing note / remark (optional)...'
+                        }
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        className="flex-1 w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-blue-500"
+                      />
+
+                      <Button
+                        size="md"
+                        variant={isOpeningMode ? 'primary' : isBalanced ? 'success' : 'primary'}
+                        onClick={handlePrimaryAction}
+                        isLoading={saving}
+                        leftIcon={<Save className="w-4 h-4" />}
+                        className="w-full sm:w-auto px-7 font-bold shadow-sm"
+                      >
+                        {actionMode === 'OPEN'
+                          ? 'Open the Day'
+                          : actionMode === 'CLOSE'
+                          ? 'Close the Day'
+                          : 'Update Day Closing'}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </>
             )}

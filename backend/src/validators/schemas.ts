@@ -165,9 +165,16 @@ export const ManualCashSplitUpSchema = z.object({
   notes: z.string().trim().optional(),
 });
 
+export const OpenDaySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (YYYY-MM-DD)'),
+  openingBalance: z.number().min(0).optional(),
+  manualSplitUps: z.array(ManualCashSplitUpSchema).min(1, 'At least one cash/bank split-up source is required'),
+  notes: z.string().trim().optional(),
+});
+
 export const SaveDailyClosingSchema = z.object({
   date: z.string().min(1, 'Date is required'),
-  openingBalance: z.number().min(0, 'Opening balance cannot be negative'),
+  openingBalance: z.number().min(0, 'Opening balance cannot be negative').optional().default(0),
   previousClosingCash: z.number().optional(),
   afterClosingExpenses: z.number().optional(),
   afterClosingCollections: z.number().optional(),

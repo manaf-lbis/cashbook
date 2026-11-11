@@ -317,14 +317,32 @@ export interface IManualCashSplitUp {
   notes?: string;
 }
 
+export type DayActionMode =
+  | 'OPEN'
+  | 'CLOSE'
+  | 'EDIT_CLOSE'
+  | 'LOCKED_PAST_CLOSED'
+  | 'LOCKED_PAST_MISSED'
+  | 'LOCKED_FUTURE';
+
 export interface IDailyClosing {
   _id?: string;
   date: string;
+  isOpened?: boolean;
+  openedAt?: string;
   openingBalance: number;
+  openingCountedBalance?: number;
+  openingExpectedBalance?: number;
+  openingVariance?: number;
+  openingManualSplitUps?: IManualCashSplitUp[];
+  openingNotes?: string;
   dayBookSales: number;
   customerNet: number;
   customerRepayments: number;
   customerCreditGiven: number;
+  customerToGet?: number;
+  customerToGive?: number;
+  customerCollectionNet?: number;
   expenseTotal: number;
   creditCardNet: number;
   creditCardDrawn: number;
@@ -337,6 +355,12 @@ export interface IDailyClosing {
   notes?: string;
   isClosed?: boolean;
   closedAt?: string;
+  cashInHand?: number;
+  totalLiquidAmount?: number;
+  amountToGive?: number;
+  amountToGet?: number;
+  grossAmount?: number;
+  netAmount?: number;
   editLogs?: Array<{
     editedAt: string;
     previousActual: number;
@@ -349,10 +373,31 @@ export interface IDailyClosing {
   updatedAt?: string;
 }
 
+export interface IDailyFinancialPosition {
+  cashInHand: number;
+  bankBalance: number;
+  systemTotalLiquid: number;
+  totalLiquidAmount: number;
+  amountToGet: number;
+  customerToGet: number;
+  supplierToGet: number;
+  amountToGive: number;
+  customerToGive: number;
+  supplierToPay: number;
+  totalCardDebt: number;
+  grossAmount: number;
+  netAmount: number;
+  openingWithCustomerNet: number;
+}
+
 export interface IDailyClosingSummary {
   date: string;
+  effectiveToday?: string;
+  actionMode: DayActionMode;
+  isOpened: boolean;
   isAlreadyClosed: boolean;
   isOpeningLocked?: boolean;
+  isPastDate?: boolean;
   existingClosing: IDailyClosing | null;
   previousClosing: {
     date: string;
@@ -364,6 +409,7 @@ export interface IDailyClosingSummary {
   openingBalance: number;
   reconciledOpeningBalance?: number;
   previousClosingCountedCash?: number;
+  missedDaysCarryForward?: number;
   afterClosingActivity?: {
     expenses: any[];
     totalExpenses: number;
@@ -387,6 +433,9 @@ export interface IDailyClosingSummary {
     customerNet: number;
     totalRepayments: number;
     totalCreditGiven: number;
+    customerToGet: number;
+    customerToGive: number;
+    customerCollectionNet: number;
     totalTransactions: number;
     transactions: any[];
   };
@@ -407,6 +456,7 @@ export interface IDailyClosingSummary {
     totalTransactions: number;
     transactions: any[];
   };
+  financialPosition: IDailyFinancialPosition;
   expectedClosingBalance: number;
   defaultSplitUps: IManualCashSplitUp[];
 }
@@ -416,6 +466,8 @@ export interface ITimelineDay {
   status: 'CLOSED_BALANCED' | 'CLOSED_DISCREPANCY' | 'OPENING' | 'NOT_CLOSED' | 'OPENING_ONLY';
   displayStatus: string;
   isSaved: boolean;
+  isOpened?: boolean;
+  isClosed?: boolean;
   isToday: boolean;
   openingBalance: number;
   dayBookSales: number;
@@ -434,6 +486,7 @@ export interface ITimelineDay {
   netCashBalance: number;
   manualSplitUps: IManualCashSplitUp[];
   notes?: string;
+  openedAt?: string;
   closedAt?: string;
 }
 

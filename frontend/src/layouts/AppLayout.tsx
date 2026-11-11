@@ -55,6 +55,11 @@ export const AppLayout: React.FC = () => {
                   <Lock className="w-3.5 h-3.5 text-slate-500" />
                   <span>Day Closed</span>
                 </>
+              ) : !status.isOpened ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse inline-block" />
+                  <span>Day Not Opened</span>
+                </>
               ) : status.isPending ? (
                 <>
                   <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
@@ -63,7 +68,7 @@ export const AppLayout: React.FC = () => {
               ) : (
                 <>
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
-                  <span>Register Open</span>
+                  <span>Day Open</span>
                 </>
               )}
             </button>

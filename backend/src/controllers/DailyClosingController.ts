@@ -23,6 +23,16 @@ export class DailyClosingController {
     }
   };
 
+  openDay = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await this.closingService.openDay(req.body);
+      const msg = result.warningMessage || 'Day opened and snapshot locked successfully!';
+      return ApiResponse.success(res, result, msg, 201);
+    } catch (err) {
+      next(err);
+    }
+  };
+
   saveClosing = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await this.closingService.saveDailyClosing(req.body);

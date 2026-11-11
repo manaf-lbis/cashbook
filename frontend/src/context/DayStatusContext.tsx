@@ -4,6 +4,7 @@ import { ApiResponse, IDailyClosingSummary } from '../types';
 
 export interface DayStatusInfo {
   isOpen: boolean;
+  isOpened: boolean;
   isClosed: boolean;
   isPending: boolean;
   expectedBalance: number;
@@ -19,7 +20,8 @@ const DayStatusContext = createContext<DayStatusContextType | undefined>(undefin
 
 export const DayStatusProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [status, setStatus] = useState<DayStatusInfo>({
-    isOpen: true,
+    isOpen: false,
+    isOpened: false,
     isClosed: false,
     isPending: false,
     expectedBalance: 0,
@@ -32,23 +34,17 @@ export const DayStatusProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const res = await apiClient.get<ApiResponse<IDailyClosingSummary>>(`/daily-closing/summary?date=${today}`);
       if (res.data.success && res.data.data) {
         const d = res.data.data;
-        const isClosed = !!d.existingClosing;
+        const isOpened = !!d.isOpened;
+        const isClosed = !!d.isAlreadyClosed;
         const currentHour = new Date().getHours();
-        // Closing pending if after 8:30 PM (20:30) and not closed yet
-        const isPending = !isClosed && currentHour >= 20;
-
-        const expected =
-          (d.openingBalance || 0) +
-          (d.dayBook?.totalSales || 0) +
-          (d.customerBook?.customerNet || 0) -
-          (d.expenseBook?.totalExpenses || 0) +
-          (d.creditCardBook?.creditCardNet || 0);
+        const isPending = isOpened && !isClosed && currentHour >= 20;
 
         setStatus({
-          isOpen: !isClosed,
+          isOpen: isOpened && !isClosed,
+          isOpened,
           isClosed,
           isPending,
-          expectedBalance: expected,
+          expectedBalance: d.expectedClosingBalance || 0,
           dateStr: today,
         });
       }
