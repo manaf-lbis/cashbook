@@ -153,15 +153,23 @@ export const DailyClosingPage: React.FC = () => {
     return openingBalance + dayBookSales + customerCollectionNet - expenseTotal + creditCardNet;
   }, [openingBalance, dayBookSales, customerCollectionNet, expenseTotal, creditCardNet]);
 
+  // Target expected balance to match:
+  // - In OPENING mode -> matches with yesterday's closing balance (openingBalance)
+  // - In CLOSING mode -> matches with expectedClosingBalance (opening + sales + collections - expenses + cards)
+  const currentExpectedBalance = useMemo(() => {
+    if (isOpeningMode) return openingBalance;
+    return expectedClosingBalance;
+  }, [isOpeningMode, openingBalance, expectedClosingBalance]);
+
   // Actual Counted Cash across all manual split-ups
   const actualClosingBalance = useMemo(() => {
     return manualSplitUps.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
   }, [manualSplitUps]);
 
-  // Variance: Actual Counted - Expected Liquid
+  // Variance: Actual Counted - Current Expected Target
   const variance = useMemo(() => {
-    return actualClosingBalance - expectedClosingBalance;
-  }, [actualClosingBalance, expectedClosingBalance]);
+    return actualClosingBalance - currentExpectedBalance;
+  }, [actualClosingBalance, currentExpectedBalance]);
 
   const isBalanced = Math.abs(variance) < 0.01;
 
@@ -780,23 +788,47 @@ export const DailyClosingPage: React.FC = () => {
                         <span className="text-xs text-slate-400 font-medium">{formatDate(selectedDate)}</span>
                       </div>
 
-                      {/* Opening Liquid Cash Reconciliation Box (Strictly Non-Editable) */}
+                      {/* Opening Liquid Cash Reconciliation Box (Editable on Day 1, Reconciled afterward) */}
                       <div className="mt-4 p-3.5 sm:p-4 bg-slate-50/90 rounded-xl border border-slate-200/90 space-y-2.5">
                         <div className="flex items-center justify-between pb-2 border-b border-slate-200/70">
                           <div>
                             <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-                              <Lock className="w-3.5 h-3.5 text-slate-500" />
+                              {summary?.isOpeningLocked || summary?.isOpened ? (
+                                <Lock className="w-3.5 h-3.5 text-slate-500" />
+                              ) : (
+                                <Edit2 className="w-3.5 h-3.5 text-blue-600" />
+                              )}
                               Starting Liquid Cash
                             </span>
                             <span className="text-[11px] text-slate-400 block mt-0.5">
-                              {summary?.missedDaysCarryForward
-                                ? 'Rolled forward from last closed day + unclosed activity'
-                                : "Reconciled from yesterday's counted closing cash"}
+                              {summary?.isOpeningLocked || summary?.isOpened
+                                ? summary?.missedDaysCarryForward
+                                  ? 'Rolled forward from last closed day + unclosed activity'
+                                  : "Reconciled from yesterday's counted closing cash"
+                                : 'First time in system: Add initial starting cash or enter available cash on right'}
                             </span>
                           </div>
-                          <span className="text-lg sm:text-xl font-black font-mono text-slate-900">
-                            ₹{openingBalance.toLocaleString('en-IN')}
-                          </span>
+
+                          {!summary?.isOpeningLocked && !summary?.isOpened ? (
+                            <div className="relative w-36 sm:w-44">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 font-mono font-bold text-slate-400">
+                                ₹
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                placeholder="0"
+                                value={openingBalance === 0 ? '' : openingBalance}
+                                onChange={(e) => setOpeningBalance(parseFloat(e.target.value) || 0)}
+                                className="w-full pl-6 pr-2.5 py-1.5 text-base sm:text-lg font-black font-mono text-slate-900 bg-white border border-blue-400 rounded-lg outline-none text-right focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-lg sm:text-xl font-black font-mono text-slate-900">
+                              ₹{openingBalance.toLocaleString('en-IN')}
+                            </span>
+                          )}
                         </div>
 
                         {/* Reconciliation Sub-Breakdown */}
@@ -1215,9 +1247,14 @@ export const DailyClosingPage: React.FC = () => {
                             <CheckCircle2 className="w-5 h-5" />
                           </div>
                           <div>
-                            <h4 className="text-sm font-bold text-emerald-900">Everything Matches (Zero Difference)</h4>
+                            <h4 className="text-sm font-bold text-emerald-900">
+                              {isOpeningMode ? 'Opening Matches Yesterday’s Closing' : 'Closing Matches Today’s Ledgers'}{' '}
+                              (Zero Difference)
+                            </h4>
                             <p className="text-xs text-emerald-700">
-                              Counted cash exactly matches expected balance (₹{actualClosingBalance.toLocaleString('en-IN')}).
+                              Counted cash exactly matches{' '}
+                              {isOpeningMode ? "yesterday's closing balance" : 'today’s expected balance'} (₹
+                              {actualClosingBalance.toLocaleString('en-IN')}).
                             </p>
                           </div>
                         </div>
@@ -1226,25 +1263,32 @@ export const DailyClosingPage: React.FC = () => {
                         </span>
                       </div>
                     ) : (
-                      <div className="p-3.5 sm:p-4 rounded-xl bg-rose-50 border border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                      <div className="p-3.5 sm:p-4 rounded-xl bg-amber-50 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
                             <AlertTriangle className="w-5 h-5" />
                           </div>
                           <div>
-                            <h4 className="text-sm font-bold text-rose-900">
-                              Discrepancy Warning: {variance > 0 ? '+' : ''}₹{variance.toLocaleString('en-IN')}
+                            <h4 className="text-sm font-bold text-amber-950">
+                              Discrepancy: {variance > 0 ? '+' : ''}₹{variance.toLocaleString('en-IN')} (Allowed to Save)
                             </h4>
-                            <p className="text-xs text-rose-700">
+                            <p className="text-xs text-amber-800">
                               {variance < 0 ? (
-                                <span>Shortage: Counted ₹{actualClosingBalance.toLocaleString('en-IN')} vs Expected ₹{expectedClosingBalance.toLocaleString('en-IN')}</span>
+                                <span>
+                                  Shortage: Counted ₹{actualClosingBalance.toLocaleString('en-IN')} vs Expected ₹
+                                  {currentExpectedBalance.toLocaleString('en-IN')}
+                                </span>
                               ) : (
-                                <span>Surplus: Counted ₹{actualClosingBalance.toLocaleString('en-IN')} vs Expected ₹{expectedClosingBalance.toLocaleString('en-IN')}</span>
+                                <span>
+                                  Surplus: Counted ₹{actualClosingBalance.toLocaleString('en-IN')} vs Expected ₹
+                                  {currentExpectedBalance.toLocaleString('en-IN')}
+                                </span>
                               )}
+                              {' • Everything is okay; you can proceed to save with this discrepancy.'}
                             </p>
                           </div>
                         </div>
-                        <span className="text-xs font-black font-mono px-3 py-1 bg-rose-200 text-rose-900 rounded-lg self-start sm:self-auto">
+                        <span className="text-xs font-black font-mono px-3 py-1 bg-amber-200 text-amber-950 rounded-lg self-start sm:self-auto">
                           DISCREPANCY
                         </span>
                       </div>
@@ -1295,17 +1339,23 @@ export const DailyClosingPage: React.FC = () => {
 
                       <Button
                         size="md"
-                        variant={isOpeningMode ? 'primary' : isBalanced ? 'success' : 'primary'}
+                        variant={isBalanced ? (isOpeningMode ? 'primary' : 'success') : 'warning'}
                         onClick={handlePrimaryAction}
                         isLoading={saving}
                         leftIcon={<Save className="w-4 h-4" />}
                         className="w-full sm:w-auto px-7 font-bold shadow-sm"
                       >
                         {actionMode === 'OPEN'
-                          ? 'Open the Day'
+                          ? isBalanced
+                            ? 'Open the Day'
+                            : `Open the Day (with ${variance > 0 ? '+' : ''}₹${Math.abs(Math.round(variance)).toLocaleString('en-IN')} Discrepancy)`
                           : actionMode === 'CLOSE'
-                          ? 'Close the Day'
-                          : 'Update Day Closing'}
+                          ? isBalanced
+                            ? 'Close the Day'
+                            : `Close the Day (with ${variance > 0 ? '+' : ''}₹${Math.abs(Math.round(variance)).toLocaleString('en-IN')} Discrepancy)`
+                          : isBalanced
+                          ? 'Update Day Closing'
+                          : `Update Closing (with ${variance > 0 ? '+' : ''}₹${Math.abs(Math.round(variance)).toLocaleString('en-IN')} Discrepancy)`}
                       </Button>
                     </div>
                   )}

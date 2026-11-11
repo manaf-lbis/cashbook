@@ -571,16 +571,18 @@ export class DailyClosingService {
     // Compute authoritative summary before opening
     const liveSummary = await this.getLiveDaySummary(date, options);
     const hasPreviousHistory = !!(liveSummary.previousClosing || liveSummary.missedDaysCarryForward !== 0);
-    const authoritativeOpeningBalance = hasPreviousHistory
-      ? liveSummary.reconciledOpeningBalance
-      : requestedOpening !== undefined
-      ? requestedOpening
-      : liveSummary.reconciledOpeningBalance;
-
     const openingCountedBalance = manualSplitUps.reduce(
       (sum, item) => sum + (Number(item.amount) || 0),
       0
     );
+
+    const authoritativeOpeningBalance = hasPreviousHistory
+      ? liveSummary.reconciledOpeningBalance
+      : requestedOpening !== undefined && requestedOpening > 0
+      ? requestedOpening
+      : openingCountedBalance > 0
+      ? openingCountedBalance
+      : liveSummary.reconciledOpeningBalance;
 
     const openingExpectedBalance = authoritativeOpeningBalance;
     const openingVariance = openingCountedBalance - openingExpectedBalance;
