@@ -181,23 +181,23 @@ export class DailyClosingService {
         .select('partyName balancePending')
         .lean(),
 
-      // Active Credit Cards
-      CreditCardModel.find({ isActive: true })
+      // Active Credit Cards as of selected date
+      CreditCardModel.find({ isActive: true, createdAt: { $lte: endOfDay } })
         .select('cardName totalOutstanding')
         .lean(),
 
-      // Expenses today
+      // Total active expenses as of now (up to end of selected day)
       ExpenseModel.find({
-        date: { $gte: startOfDay, $lte: endOfDay },
+        date: { $lte: endOfDay },
         isDeleted: { $ne: true },
       })
         .select('title amount category accountId date remarks')
         .populate('accountId', 'name')
         .lean(),
 
-      // Credit Card Transactions today
+      // Credit Card Transactions up to end of selected day
       CreditCardTransactionModel.find({
-        date: { $gte: startOfDay, $lte: endOfDay },
+        date: { $lte: endOfDay },
       })
         .populate('cardId', 'cardName bankName last4Digits')
         .lean(),
@@ -220,9 +220,10 @@ export class DailyClosingService {
     ]);
 
     // 3. Separate After-Closing Collections vs Daytime Day Book Sales
-    const taggedAfterCloseCollections = allDayBookEntries.filter(
-      (e) => e.remarks && /\[After-Closing Adjustment\]/i.test(e.remarks)
-    );
+    const taggedAfterCloseCollections = allDayBookEntries.filter((e) => {
+      const d = new Date(e.date);
+      return d >= startOfDay && d <= endOfDay && e.remarks && /\[After-Closing Adjustment\]/i.test(e.remarks);
+    });
     const dayBookEntries = allDayBookEntries.filter(
       (e) => !e.remarks || !/\[After-Closing Adjustment\]/i.test(e.remarks)
     );
@@ -250,7 +251,21 @@ export class DailyClosingService {
     const customerTransactions: any[] = [];
 
     for (const credit of allCredits) {
-      const due = Number(credit.balanceDue) || 0;
+      let due = Number(credit.balanceDue) || 0;
+      if (credit.entries && credit.entries.length > 0) {
+        let givenUpToDate = 0;
+        let repaidUpToDate = 0;
+        for (const entry of credit.entries) {
+          if ((entry as any).isDeleted) continue;
+          const eDate = new Date(entry.date);
+          if (eDate <= endOfDay) {
+            if (entry.type === CreditTransactionType.GIVEN) givenUpToDate += entry.amount;
+            else if (entry.type === CreditTransactionType.REPAYMENT) repaidUpToDate += entry.amount;
+          }
+        }
+        due = givenUpToDate - repaidUpToDate;
+      }
+
       if (due > 0) customerToGet += due;
       else if (due < 0) customerToGive += Math.abs(due);
 
@@ -287,21 +302,28 @@ export class DailyClosingService {
     }
     const totalCardDebt = activeCards.reduce((sum, c) => sum + Math.max(0, Number(c.totalOutstanding) || 0), 0);
 
-    // 6. After-Closing Expenses vs Daytime Expenses
-    const taggedAdjustmentExpenses = allDayExpenses.filter(
-      (e) => e.remarks && /\[After-Closing Adjustment\]/i.test(e.remarks)
-    );
+    // 6. Total Expenses as of now & Daytime vs After-Closing breakdown
+    const taggedAdjustmentExpenses = allDayExpenses.filter((e) => {
+      const d = new Date(e.date);
+      return d >= startOfDay && d <= endOfDay && e.remarks && /\[After-Closing Adjustment\]/i.test(e.remarks);
+    });
     const afterClosingExpenses = [...nightExpenses, ...taggedAdjustmentExpenses];
     const afterClosingExpenseTotal = afterClosingExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
     const afterClosingCollectionTotal = taggedAfterCloseCollections.reduce((sum, e) => sum + (e.amount || 0), 0);
 
-    const daytimeExpenses = allDayExpenses.filter(
-      (e) => !e.remarks || !/\[After-Closing Adjustment\]/i.test(e.remarks)
-    );
-    const totalExpenses = daytimeExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+    // Total expenses across active ledger as of now (user specification: ₹5,005)
+    const totalExpenses = allDayExpenses
+      .filter((e) => !e.remarks || !/\[After-Closing Adjustment\]/i.test(e.remarks))
+      .reduce((sum, exp) => sum + (exp.amount || 0), 0);
+
+    const daytimeExpenses = allDayExpenses.filter((e) => {
+      const d = new Date(e.date);
+      return d >= startOfDay && d <= endOfDay && (!e.remarks || !/\[After-Closing Adjustment\]/i.test(e.remarks));
+    });
 
     const expenseCategoryMap = new Map<string, { category: string; total: number; count: number }>();
-    for (const exp of daytimeExpenses) {
+    for (const exp of allDayExpenses) {
+      if (exp.remarks && /\[After-Closing Adjustment\]/i.test(exp.remarks)) continue;
       const cat = exp.category || 'General';
       if (!expenseCategoryMap.has(cat)) {
         expenseCategoryMap.set(cat, { category: cat, total: 0, count: 0 });
@@ -312,17 +334,20 @@ export class DailyClosingService {
     }
     const expenseCategoryBreakdown = Array.from(expenseCategoryMap.values());
 
-    // 7. Credit Card Transactions today
-    let creditCardDrawn = 0;
-    let creditCardPayment = 0;
+    // 7. Credit Card: Total card debt / transactions as of now (user specification: ₹2,216)
+    let cardTxDrawn = 0;
+    let cardTxPayment = 0;
     for (const tx of cardTransactions) {
       if (tx.type === CreditCardTransactionType.PURCHASE || tx.type === CreditCardTransactionType.CASH_DRAWN) {
-        creditCardDrawn += tx.amount;
+        cardTxDrawn += tx.amount || 0;
       } else if (tx.type === CreditCardTransactionType.PAYMENT) {
-        creditCardPayment += tx.amount;
+        cardTxPayment += tx.amount || 0;
       }
     }
-    const creditCardNet = creditCardDrawn - creditCardPayment;
+    const cardTxNet = cardTxDrawn - cardTxPayment;
+    const creditCardNet = totalCardDebt > 0 ? totalCardDebt : (cardTxNet > 0 ? cardTxNet : 0);
+    const creditCardDrawn = totalCardDebt > 0 ? totalCardDebt : cardTxDrawn;
+    const creditCardPayment = cardTxPayment;
 
     // 8. Account Liquid Breakdown (Cash in Hand & Bank Balances)
     let systemCashInHand = 0;
@@ -333,7 +358,7 @@ export class DailyClosingService {
     }
     const systemTotalLiquid = systemCashInHand + systemBankBalances;
 
-    // 9. Reconciled Opening Balance Calculation (Strictly Non-Editable once opened or backed by history)
+    // 9. Reconciled Opening Balance Calculation (First investment or carried from yesterday)
     let missedDaysCarryForward = 0;
     let baseCarryForward = previousClosingCountedCash;
 
@@ -357,13 +382,18 @@ export class DailyClosingService {
         ? existingClosing.openingBalance
         : systemTotalLiquid;
 
-    // Starting liquid cash is ALWAYS locked once day is opened OR when prior closed/opened records exist
-    const isOpeningLocked = isOpened || !!(previousClosed || previousAnyRecord?.isOpened);
+    // Starting liquid cash is set once in history (first opening). On subsequent days,
+    // it is automatically reconciled from yesterday's closing cash and locked.
+    const isOpeningLocked = isOpened || isClosed || isPastDate || isFutureDate || !!previousClosed;
     const openingBalance = isOpened && existingClosing ? existingClosing.openingBalance : reconciledOpeningBalance;
 
-    // Expected Closing Cash = Opening Net Cash + Sales + Credit Card Net + Customer Cash Given - Total Expenses
-    const expectedClosingBalance =
-      openingBalance + totalDayBookSales + creditCardNet + customerCashNetToday - totalExpenses;
+    // USER'S EXACT MATHEMATICAL FORMULAS:
+    // liquid cash + daybok + customer + credit card + total expences = gross
+    // liquid cash + daybook + customer + credit card - total expences = net
+    // on closing all bank cash + wallet cash should = net
+    const grossAmount = openingBalance + totalDayBookSales + customerCollectionNet + creditCardNet + totalExpenses;
+    const netAmount = openingBalance + totalDayBookSales + customerCollectionNet + creditCardNet - totalExpenses;
+    const expectedClosingBalance = netAmount;
 
     // Total Amount We Need to Get & Give across entire ledger
     const amountToGet = customerToGet + supplierToGet;
@@ -373,12 +403,6 @@ export class DailyClosingService {
     const effectiveLiquidAmount = isClosed && existingClosing
       ? existingClosing.actualClosingBalance
       : expectedClosingBalance;
-
-    // User's exact definitions:
-    // 1. Net Cash = Current Available Liquid Cash (e.g. 320 at opening, 870 at closing)
-    // 2. Gross Amount = Available Cash + Customer Receivables (Amount to Get) + Total Expenses (e.g. 320 + 30 + 10 = 360)
-    const netAmount = effectiveLiquidAmount;
-    const grossAmount = effectiveLiquidAmount + amountToGet + totalExpenses;
 
     // 10. Default Split-Up Sources
     let defaultSplitUps: IManualCashSplitUp[] = [];
@@ -446,12 +470,13 @@ export class DailyClosingService {
         entries: dayBookEntries.slice(0, 50),
       },
       customerBook: {
-        customerNet: customerCashNetToday, // Daytime cash received from customers (repayments - credit given)
-        totalRepayments: customerRepayments,
-        totalCreditGiven: customerCreditGiven,
+        customerNet: customerCollectionNet, // User's customer ledger balance (You'll Get - You'll Give, e.g. 5,715)
+        customerCollectionNet,
         customerToGet,
         customerToGive,
-        customerCollectionNet, // Overall To Get - To Give
+        totalRepayments: customerRepayments,
+        totalCreditGiven: customerCreditGiven,
+        todayDrawerMovement: customerCashNetToday,
         totalTransactions: customerTransactions.length,
         transactions: customerTransactions.slice(0, 50),
       },
@@ -577,8 +602,8 @@ export class DailyClosingService {
 
     const authoritativeOpeningBalance = hasPreviousHistory
       ? liveSummary.reconciledOpeningBalance
-      : requestedOpening !== undefined && requestedOpening > 0
-      ? requestedOpening
+      : requestedOpening !== undefined && requestedOpening !== null
+      ? Number(requestedOpening)
       : openingCountedBalance > 0
       ? openingCountedBalance
       : liveSummary.reconciledOpeningBalance;
@@ -604,8 +629,21 @@ export class DailyClosingService {
           : `Day opened with opening shortage of -₹${diffFormatted} (Counted ₹${openingCountedBalance.toLocaleString('en-IN')} vs Expected ₹${openingExpectedBalance.toLocaleString('en-IN')}).`;
     }
 
-    const openingGross = openingCountedBalance + fp.amountToGet + liveSummary.expenseBook.totalExpenses;
-    const openingNet = openingCountedBalance;
+    // User's exact formulas:
+    // liquid cash + daybook + customer + credit card + total expences = gross
+    // liquid cash + daybook + customer + credit card - total expences = net
+    const openingGross =
+      authoritativeOpeningBalance +
+      liveSummary.dayBook.totalSales +
+      liveSummary.customerBook.customerNet +
+      liveSummary.creditCardBook.creditCardNet +
+      liveSummary.expenseBook.totalExpenses;
+    const openingNet =
+      authoritativeOpeningBalance +
+      liveSummary.dayBook.totalSales +
+      liveSummary.customerBook.customerNet +
+      liveSummary.creditCardBook.creditCardNet -
+      liveSummary.expenseBook.totalExpenses;
 
     const record = await DailyClosingModel.create({
       date,
@@ -689,6 +727,7 @@ export class DailyClosingService {
     const liveSummary = await this.getLiveDaySummary(date, options);
     const authoritativeOpeningBalance = existing.openingBalance;
     const dayBookSales = liveSummary.dayBook.totalSales;
+    const customerNet = liveSummary.customerBook.customerNet; // customerCollectionNet (5,715)
     const customerRepayments = liveSummary.customerBook.totalRepayments;
     const customerCreditGiven = liveSummary.customerBook.totalCreditGiven;
     const customerCashNetToday = customerRepayments - customerCreditGiven;
@@ -697,9 +736,11 @@ export class DailyClosingService {
     const creditCardDrawn = liveSummary.creditCardBook.creditCardDrawn;
     const creditCardPayment = liveSummary.creditCardBook.creditCardPayment;
 
-    // Expected Closing Balance = Opening Net Cash + Sales + Card Net + Customer Cash Given - Expenses
+    // User's exact mathematical formula:
+    // liquid cash + daybook + customer + credit card - total expences = net
+    // on closing all bank cash + wallet cash should = net
     const expectedClosingBalance =
-      authoritativeOpeningBalance + dayBookSales + creditCardNet + customerCashNetToday - expenseTotal;
+      authoritativeOpeningBalance + dayBookSales + customerNet + creditCardNet - expenseTotal;
 
     const actualClosingBalance = manualSplitUps.reduce(
       (sum, item) => sum + (Number(item.amount) || 0),
@@ -717,10 +758,11 @@ export class DailyClosingService {
     const effectiveCashInHand = countedCashInHand > 0 ? countedCashInHand : fp.cashInHand;
 
     // User's defined pillars:
-    // 1. Net Cash = Current Available Liquid Cash (actualClosingBalance, e.g. 870)
-    // 2. Gross Amount = Available Cash + Customer Receivables (Amount to Get) + Total Expenses
+    // 1. Net Cash = Current Available Liquid Cash (actualClosingBalance)
+    // 2. Gross Amount = liquid cash + daybook + customer + credit card + total expenses
     const netAmount = actualClosingBalance;
-    const grossAmount = actualClosingBalance + fp.amountToGet + expenseTotal;
+    const grossAmount =
+      authoritativeOpeningBalance + dayBookSales + customerNet + creditCardNet + expenseTotal;
 
     let warningMessage: string | null = null;
     if (!isBalanced) {
@@ -745,7 +787,7 @@ export class DailyClosingService {
     }
 
     existing.dayBookSales = dayBookSales;
-    existing.customerNet = customerCashNetToday;
+    existing.customerNet = customerNet;
     existing.customerRepayments = customerRepayments;
     existing.customerCreditGiven = customerCreditGiven;
     existing.customerToGet = liveSummary.customerBook.customerToGet;

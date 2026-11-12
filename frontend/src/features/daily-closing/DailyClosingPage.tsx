@@ -144,18 +144,21 @@ export const DailyClosingPage: React.FC = () => {
   const dayBookSales = summary?.dayBook?.totalSales || 0;
   const customerRepayments = summary?.customerBook?.totalRepayments || 0;
   const customerCreditGiven = summary?.customerBook?.totalCreditGiven || 0;
-  const customerCashNetToday = customerRepayments - customerCreditGiven; // Cash given to us by customers today (+)
+  const customerCashNetToday = customerRepayments - customerCreditGiven;
   const customerToGet = summary?.customerBook?.customerToGet || 0;
   const customerToGive = summary?.customerBook?.customerToGive || 0;
-  const customerCollectionNet = summary?.customerBook?.customerCollectionNet || 0;
+  const customerCollectionNet = summary?.customerBook?.customerNet ?? summary?.customerBook?.customerCollectionNet ?? (customerToGet - customerToGive);
   const expenseTotal = summary?.expenseBook?.totalExpenses || 0;
   const creditCardNet = summary?.creditCardBook?.creditCardNet || 0;
   const creditCardDrawn = summary?.creditCardBook?.creditCardDrawn || 0;
 
-  // Expected Closing Cash = Opening Net Cash + Daybook Sales + Credit Card Net/Drawn + Customers Cash Given - Expenses
+  // Expected Closing Cash = Opening Net Cash + Daybook Sales + Customer Ledger + Credit Card - Expenses
+  // User's exact mathematical formula:
+  // liquid cash + daybook + customer + credit card - total expences = net
+  // on closing all bank cash + wallet cash should = net
   const expectedClosingBalance = useMemo(() => {
-    return openingBalance + dayBookSales + creditCardNet + customerCashNetToday - expenseTotal;
-  }, [openingBalance, dayBookSales, creditCardNet, customerCashNetToday, expenseTotal]);
+    return openingBalance + dayBookSales + creditCardNet + customerCollectionNet - expenseTotal;
+  }, [openingBalance, dayBookSales, creditCardNet, customerCollectionNet, expenseTotal]);
 
   // Target expected balance to match:
   // - In OPENING mode -> matches with yesterday's closing balance (openingBalance)
@@ -197,11 +200,13 @@ export const DailyClosingPage: React.FC = () => {
   const displayAmountToGet = fp?.amountToGet || 0;
   const displayAmountToGive = fp?.amountToGive || 0;
 
-  // 1. Net Amount = Current Available Cash (e.g. 320 at opening, 870 at closing)
-  const displayNetAmount = displayTotalLiquid;
-
-  // 2. Gross Amount = Available Cash + Customer Receivables (To Get) + Total Expenses (e.g. 320 + 30 + 10 = 360)
-  const displayGrossAmount = displayTotalLiquid + displayAmountToGet + expenseTotal;
+  // User's exact formulas:
+  // liquid cash + daybok + customer + credit card + total expences = gross
+  // liquid cash + daybook + customer + credit card - total expences = net
+  const displayGrossAmount =
+    openingBalance + dayBookSales + customerCollectionNet + creditCardNet + expenseTotal;
+  const displayNetAmount =
+    openingBalance + dayBookSales + customerCollectionNet + creditCardNet - expenseTotal;
 
   // Split-up handlers
   const handleSplitUpChange = (index: number, field: keyof IManualCashSplitUp, value: any) => {
@@ -566,7 +571,7 @@ export const DailyClosingPage: React.FC = () => {
                         ₹{displayGrossAmount.toLocaleString('en-IN')}
                       </span>
                       <p className="text-[11px] text-indigo-700 mt-1">
-                        Total liquid worth (approx. equal to Total Cash)
+                        Liquid Cash + Daybook + Customer + Credit Card + Total Expenses
                       </p>
                     </div>
 
@@ -579,7 +584,7 @@ export const DailyClosingPage: React.FC = () => {
                         ₹{displayNetAmount.toLocaleString('en-IN')}
                       </span>
                       <p className="text-[11px] text-slate-300 mt-1">
-                        Total Cash − Expenses (₹{expenseTotal.toLocaleString('en-IN')}) − Amount to Give (₹{displayAmountToGive.toLocaleString('en-IN')})
+                        Liquid Cash + Daybook + Customer + Credit Card − Total Expenses
                       </p>
                     </div>
                   </div>
@@ -925,7 +930,7 @@ export const DailyClosingPage: React.FC = () => {
                           </span>
                         </div>
 
-                        {/* 2. Customers Cash Given to Us (Repayments / Collections) */}
+                        {/* 2. Customer Ledger (Overall Outstanding Balance as of now) */}
                         <div className="p-3 rounded-xl bg-slate-50 space-y-1.5">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2.5">
@@ -934,23 +939,23 @@ export const DailyClosingPage: React.FC = () => {
                               </span>
                               <div>
                                 <span className="text-xs font-bold text-slate-800 block">
-                                  Customers Cash Given to Us (Repayments)
+                                  Customer Ledger
                                 </span>
                                 <span className="text-[11px] text-slate-500">
-                                  Cash received from customers today
+                                  Total customer balance as of now
                                 </span>
                               </div>
                             </div>
                             <span
                               className={`font-mono font-bold text-sm ${
-                                customerCashNetToday >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                customerCollectionNet >= 0 ? 'text-emerald-600' : 'text-rose-600'
                               }`}
                             >
-                              {customerCashNetToday >= 0 ? '+' : ''}₹{customerCashNetToday.toLocaleString('en-IN')}
+                              {customerCollectionNet >= 0 ? '+' : ''}₹{customerCollectionNet.toLocaleString('en-IN')}
                             </span>
                           </div>
                           <div className="pl-9 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/50 pt-1">
-                            <span>Customer Outstanding Ledger:</span>
+                            <span>Customer Outstanding:</span>
                             <span>
                               You'll Get <strong className="text-teal-700 font-mono">₹{customerToGet.toLocaleString('en-IN')}</strong> − You'll Give <strong className="text-rose-700 font-mono">₹{customerToGive.toLocaleString('en-IN')}</strong>
                             </span>
@@ -966,7 +971,7 @@ export const DailyClosingPage: React.FC = () => {
                             <div>
                               <span className="text-xs font-bold text-slate-800 block">Shop Expenses</span>
                               <span className="text-[11px] text-slate-400">
-                                {summary?.expenseBook?.totalEntries || 0} expenses today
+                                Total expenses as of now
                               </span>
                             </div>
                           </div>
@@ -983,7 +988,7 @@ export const DailyClosingPage: React.FC = () => {
                             </span>
                             <div>
                               <span className="text-xs font-bold text-slate-800 block">Credit Card Activity</span>
-                              <span className="text-[11px] text-slate-400">Cash drawn / swipes vs bill paid</span>
+                              <span className="text-[11px] text-slate-400">Total card balance / drawn as of now</span>
                             </div>
                           </div>
                           <span
@@ -1003,7 +1008,7 @@ export const DailyClosingPage: React.FC = () => {
                         <div>
                           <span className="text-xs text-slate-300 font-semibold block">Expected Closing Cash</span>
                           <span className="text-[11px] text-slate-400">
-                            Opening Net Cash + Sales + Card Net + Customer Cash Given − Expenses
+                            Liquid Cash + Daybook + Customer + Credit Card − Total Expenses
                           </span>
                         </div>
                         <span className="text-xl font-black font-mono text-emerald-400">
@@ -1012,7 +1017,7 @@ export const DailyClosingPage: React.FC = () => {
                       </div>
                       <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
                         <span className="text-slate-400">
-                          Formula ({openingBalance} + {dayBookSales} + {creditCardNet} + {customerCashNetToday} − {expenseTotal}):
+                          Formula ({openingBalance} + {dayBookSales} + {customerCollectionNet} + {creditCardNet} − {expenseTotal}):
                         </span>
                         <span className="font-mono font-bold text-white">
                           ₹{expectedClosingBalance.toLocaleString('en-IN')}

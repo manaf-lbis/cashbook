@@ -28,6 +28,8 @@ async function runSimulation() {
   const day1 = '1999-01-01';
   const day2 = '1999-01-02';
   const day3 = '1999-01-03';
+  const userExDay = '1990-01-01';
+  const userCaseDay = '1985-05-05';
   const testCustomerPrefix = '__SIM_TEST_CUSTOMER__';
   let cashAccount: any = null;
   let createdTempAccount = false;
@@ -35,10 +37,11 @@ async function runSimulation() {
 
   try {
     // 0. Clean slate for test window
-    await DailyClosingModel.deleteMany({ date: { $in: [day1, day2, day3] } });
-    await ExpenseModel.deleteMany({ date: { $gte: getStartOfDayIST(day1), $lte: getEndOfDayIST(day3) } });
-    await DayBookEntryModel.deleteMany({ date: { $gte: getStartOfDayIST(day1), $lte: getEndOfDayIST(day3) } });
+    await DailyClosingModel.deleteMany({ date: { $in: [day1, day2, day3, userExDay, userCaseDay] } });
+    await ExpenseModel.deleteMany({ date: { $gte: getStartOfDayIST('1985-01-01'), $lte: getEndOfDayIST(day3) } });
+    await DayBookEntryModel.deleteMany({ date: { $gte: getStartOfDayIST('1985-01-01'), $lte: getEndOfDayIST(day3) } });
     await CreditModel.deleteMany({ partyName: { $regex: `^${testCustomerPrefix}` } });
+    await mongoose.connection.collection('creditcards').deleteMany({ cardName: 'Test CC 2216' });
 
     cashAccount = await AccountModel.findOne({ name: 'Cash Drawer' });
     createdTempAccount = !cashAccount;
@@ -118,10 +121,10 @@ async function runSimulation() {
       date: dayjs.tz(day1, TIMEZONE).hour(16).minute(0).toDate(),
     });
 
-    // Step 2: First Closing (2nd Calculation) -> Expected = 10000 (Opening Net Cash) + 5000 (Sales) - 1000 (Expenses) = 14000
+    // Step 2: First Closing (2nd Calculation) -> Expected = Liquid Cash + Sales + Customer + Credit Card - Expenses
     const d1PreClose = await service.getLiveDaySummary(day1, { todayOverride: day1 });
     if (d1PreClose.actionMode !== 'CLOSE') throw new Error(`Expected actionMode CLOSE, got ${d1PreClose.actionMode}`);
-    const expectedD1Close = 10000 + 5000 + d1PreClose.customerBook.customerNet - 1000;
+    const expectedD1Close = 10000 + 5000 + d1PreClose.customerBook.customerNet + d1PreClose.creditCardBook.creditCardNet - 1000;
     if (d1PreClose.expectedClosingBalance !== expectedD1Close) {
       throw new Error(`Expected ${expectedD1Close}, got ${d1PreClose.expectedClosingBalance}`);
     }
@@ -315,15 +318,28 @@ async function runSimulation() {
     }
 
     // Verify user's defined formulas:
-    // 1. Net Cash = Current Available Liquid Cash
-    // 2. Gross Amount = Available Cash + Customer Receivables (Amount to Get) + Total Expenses
+    // liquid cash + daybok + customer + credit card + total expences = gross
+    // liquid cash + daybook + customer + credit card - total expences = net
     const fp = afterCustomerSummary.financialPosition;
     const totalExp = afterCustomerSummary.expenseBook.totalExpenses;
-    if (fp.netAmount !== fp.totalLiquidAmount) {
-      throw new Error(`Net Amount must equal Total Available Liquid Cash (${fp.totalLiquidAmount}), got ${fp.netAmount}`);
+    const expectedGross =
+      afterCustomerSummary.openingBalance +
+      afterCustomerSummary.dayBook.totalSales +
+      afterCustomerSummary.customerBook.customerNet +
+      afterCustomerSummary.creditCardBook.creditCardNet +
+      totalExp;
+    const expectedNet =
+      afterCustomerSummary.openingBalance +
+      afterCustomerSummary.dayBook.totalSales +
+      afterCustomerSummary.customerBook.customerNet +
+      afterCustomerSummary.creditCardBook.creditCardNet -
+      totalExp;
+
+    if (fp.grossAmount !== expectedGross) {
+      throw new Error(`Gross Amount formula mismatch! Expected ${expectedGross}, got ${fp.grossAmount}`);
     }
-    if (fp.grossAmount !== fp.totalLiquidAmount + fp.amountToGet + totalExp) {
-      throw new Error(`Gross Amount formula mismatch! Expected ${fp.totalLiquidAmount + fp.amountToGet + totalExp}, got ${fp.grossAmount}`);
+    if (fp.netAmount !== expectedNet) {
+      throw new Error(`Net Amount formula mismatch! Expected ${expectedNet}, got ${fp.netAmount}`);
     }
     const expectedD3Closing =
       afterCustomerSummary.openingBalance +
@@ -350,7 +366,6 @@ async function runSimulation() {
     // Closing Count: HDFC 500, SBI 300, Wallet 70 = 870 -> 0 Discrepancy!
     // =========================================================================
     console.log('\n--- [Scenario 5: User Exact Numerical Example Verification] ---');
-    const userExDay = '1990-01-01'; // Before any test days, guaranteed no prior closing records
     await DailyClosingModel.deleteMany({ date: userExDay });
     await ExpenseModel.deleteMany({ date: { $gte: getStartOfDayIST(userExDay), $lte: getEndOfDayIST(userExDay) } });
     await DayBookEntryModel.deleteMany({ date: { $gte: getStartOfDayIST(userExDay), $lte: getEndOfDayIST(userExDay) } });
@@ -390,16 +405,16 @@ async function runSimulation() {
       date: dayjs.tz(userExDay, TIMEZONE).hour(14).toDate(),
     });
 
-    // Customer gave 100 (repayment into cash)
+    // Customer gave 100 as credit
     await CreditModel.create({
       partyName: `${testCustomerPrefix}EX_CUST_100`,
       totalGiven: 100,
-      totalRepaid: 100,
-      balanceDue: 0,
+      totalRepaid: 0,
+      balanceDue: 100,
       status: 'ACTIVE',
       entries: [
         {
-          type: CreditTransactionType.REPAYMENT,
+          type: CreditTransactionType.GIVEN,
           amount: 100,
           accountId: cashAccount._id,
           date: dayjs.tz(userExDay, TIMEZONE).hour(15).toDate(),
@@ -440,15 +455,128 @@ async function runSimulation() {
     await ExpenseModel.deleteMany({ date: { $gte: getStartOfDayIST(userExDay), $lte: getEndOfDayIST(userExDay) } });
     await DayBookEntryModel.deleteMany({ date: { $gte: getStartOfDayIST(userExDay), $lte: getEndOfDayIST(userExDay) } });
 
+    // =========================================================================
+    // SCENARIO 6: USER'S LIVE DATA SCREENSHOT CASE (0 Sales, 5715 Cust, 5005 Exp, 2216 CC)
+    // Gross = 0 + 0 + 5715 + 2216 + 5005 = 12936
+    // Net   = 0 + 0 + 5715 + 2216 - 5005 = 2926
+    // =========================================================================
+    console.log('\n--- [Scenario 6: User Screenshot Case (Customer 5715, Exp 5005, CC 2216)] ---');
+    await DailyClosingModel.deleteMany({ date: userCaseDay });
+    await ExpenseModel.deleteMany({ date: { $gte: getStartOfDayIST('1985-01-01'), $lte: getEndOfDayIST(userCaseDay) } });
+    await DayBookEntryModel.deleteMany({ date: { $gte: getStartOfDayIST('1985-01-01'), $lte: getEndOfDayIST(userCaseDay) } });
+
+    // 1. Two expense heads totaling 5005
+    await ExpenseModel.create({
+      title: 'Office Supplies',
+      amount: 2505,
+      category: 'Office Supplies',
+      accountId: cashAccount._id,
+      date: dayjs.tz(userCaseDay, TIMEZONE).hour(10).toDate(),
+    });
+    await ExpenseModel.create({
+      title: 'Shop Expenses',
+      amount: 2500,
+      category: 'Shop Expenses',
+      accountId: cashAccount._id,
+      date: dayjs.tz(userCaseDay, TIMEZONE).hour(11).toDate(),
+    });
+
+    // 2. Customer ledger totaling 5715
+    await CreditModel.create({
+      partyName: `${testCustomerPrefix}SCREENSHOT_CUST`,
+      totalGiven: 5715,
+      totalRepaid: 0,
+      balanceDue: 5715,
+      status: 'ACTIVE',
+      entries: [
+        {
+          type: CreditTransactionType.GIVEN,
+          amount: 5715,
+          accountId: cashAccount._id,
+          date: dayjs.tz(userCaseDay, TIMEZONE).hour(9).toDate(),
+        },
+      ],
+    });
+
+    // 3. Credit Card with 2216 outstanding
+    const testCard = await mongoose.connection.collection('creditcards').insertOne({
+      cardName: 'Test CC 2216',
+      bankName: 'HDFC',
+      last4Digits: '9999',
+      creditLimit: 50000,
+      totalOutstanding: 2216,
+      availableLimit: 47784,
+      isActive: true,
+      createdAt: dayjs.tz(userCaseDay, TIMEZONE).hour(8).toDate(),
+      updatedAt: dayjs.tz(userCaseDay, TIMEZONE).hour(8).toDate(),
+    });
+
+    // Open Day with 0 starting cash
+    const caseOpen = await service.openDay(
+      {
+        date: userCaseDay,
+        openingBalance: 0,
+        manualSplitUps: [{ sourceName: 'Cash Drawer', amount: 0 }],
+      },
+      { todayOverride: userCaseDay }
+    );
+    console.log(`✓ Opened Day with Liquid Cash = ₹${caseOpen.closing.openingBalance}`);
+
+    const caseSummary = await service.getLiveDaySummary(userCaseDay, { todayOverride: userCaseDay });
+    if (caseSummary.expenseBook.totalExpenses !== 5005) {
+      throw new Error(`Expected Total Expenses 5005, got ${caseSummary.expenseBook.totalExpenses}`);
+    }
+    if (caseSummary.customerBook.customerNet !== 5715) {
+      throw new Error(`Expected Customer Net 5715, got ${caseSummary.customerBook.customerNet}`);
+    }
+    if (caseSummary.creditCardBook.creditCardNet !== 2216) {
+      throw new Error(`Expected Credit Card Net 2216, got ${caseSummary.creditCardBook.creditCardNet}`);
+    }
+
+    const caseExpectedGross = 0 + 0 + 5715 + 2216 + 5005; // 12936
+    const caseExpectedNet = 0 + 0 + 5715 + 2216 - 5005; // 2926
+    if (caseSummary.financialPosition.grossAmount !== caseExpectedGross) {
+      throw new Error(`Expected Gross ${caseExpectedGross}, got ${caseSummary.financialPosition.grossAmount}`);
+    }
+    if (caseSummary.expectedClosingBalance !== caseExpectedNet) {
+      throw new Error(`Expected Net Closing Balance ${caseExpectedNet}, got ${caseSummary.expectedClosingBalance}`);
+    }
+    console.log(`✓ Verified User's Exact Numbers: Daybook = ₹0, Customer = ₹${caseSummary.customerBook.customerNet}, Exp = ₹${caseSummary.expenseBook.totalExpenses}, CC = ₹${caseSummary.creditCardBook.creditCardNet}`);
+    console.log(`✓ Gross (0 + 0 + 5715 + 2216 + 5005) = ₹${caseSummary.financialPosition.grossAmount}`);
+    console.log(`✓ Net (0 + 0 + 5715 + 2216 - 5005) = ₹${caseSummary.expectedClosingBalance}`);
+
+    // Close with matching cash 2926
+    const caseClose = await service.saveDailyClosing(
+      {
+        date: userCaseDay,
+        manualSplitUps: [
+          { sourceName: 'HDFC Bank', amount: 2000 },
+          { sourceName: 'Cash Drawer', amount: 926 },
+        ],
+      },
+      { todayOverride: userCaseDay }
+    );
+    if (!caseClose.isBalanced || caseClose.closing.actualClosingBalance !== 2926) {
+      throw new Error('Case closing verification failed!');
+    }
+    console.log(`✓ Counted Cash ₹${caseClose.closing.actualClosingBalance} matches Net ₹${expectedNet} (Zero Discrepancy)!`);
+
+    // Clean up scenario 6
+    await mongoose.connection.collection('creditcards').deleteOne({ _id: testCard.insertedId });
+    await DailyClosingModel.deleteMany({ date: userCaseDay });
+    await ExpenseModel.deleteMany({ date: { $gte: getStartOfDayIST('1985-01-01'), $lte: getEndOfDayIST(userCaseDay) } });
+    await DayBookEntryModel.deleteMany({ date: { $gte: getStartOfDayIST('1985-01-01'), $lte: getEndOfDayIST(userCaseDay) } });
+
     console.log('\n=====================================================');
     console.log('🎉 ALL SIMULATION SCENARIOS PASSED 100%!');
     console.log('=====================================================\n');
   } finally {
     // Cleanup ALL test data so production/local dev DB remains clean
-    await DailyClosingModel.deleteMany({ date: { $in: [day1, day2, day3] } });
-    await ExpenseModel.deleteMany({ date: { $gte: getStartOfDayIST(day1), $lte: getEndOfDayIST(day3) } });
-    await DayBookEntryModel.deleteMany({ date: { $gte: getStartOfDayIST(day1), $lte: getEndOfDayIST(day3) } });
+    await DailyClosingModel.deleteMany({ date: { $in: [day1, day2, day3, userExDay, userCaseDay] } });
+    await ExpenseModel.deleteMany({ date: { $gte: getStartOfDayIST('1985-01-01'), $lte: getEndOfDayIST(day3) } });
+    await DayBookEntryModel.deleteMany({ date: { $gte: getStartOfDayIST('1985-01-01'), $lte: getEndOfDayIST(day3) } });
     await CreditModel.deleteMany({ partyName: { $regex: `^${testCustomerPrefix}` } });
+    await mongoose.connection.collection('creditcards').deleteMany({ cardName: 'Test CC 2216' });
     if (createdTempAccount && cashAccount) {
       await AccountModel.findByIdAndDelete(cashAccount._id);
     } else if (cashAccount) {
