@@ -118,10 +118,10 @@ async function runSimulation() {
       date: dayjs.tz(day1, TIMEZONE).hour(16).minute(0).toDate(),
     });
 
-    // Step 2: First Closing (2nd Calculation) -> Expected = 10000 + 5000 + customerCollectionNet - 1000
+    // Step 2: First Closing (2nd Calculation) -> Expected = 10000 (Opening Net Cash) + 5000 (Sales) - 1000 (Expenses) = 14000
     const d1PreClose = await service.getLiveDaySummary(day1, { todayOverride: day1 });
     if (d1PreClose.actionMode !== 'CLOSE') throw new Error(`Expected actionMode CLOSE, got ${d1PreClose.actionMode}`);
-    const expectedD1Close = 10000 + 5000 + d1PreClose.customerBook.customerCollectionNet - 1000;
+    const expectedD1Close = 10000 + 5000 + d1PreClose.customerBook.customerNet - 1000;
     if (d1PreClose.expectedClosingBalance !== expectedD1Close) {
       throw new Error(`Expected ${expectedD1Close}, got ${d1PreClose.expectedClosingBalance}`);
     }
@@ -315,26 +315,130 @@ async function runSimulation() {
     }
 
     // Verify user's defined formulas:
-    // 1. Gross Amount ≈ Total Cash Available
-    // 2. Net Amount = Total Cash Available - Expenses - All Cash We Need to Give
+    // 1. Net Cash = Current Available Liquid Cash
+    // 2. Gross Amount = Available Cash + Customer Receivables (Amount to Get) + Total Expenses
     const fp = afterCustomerSummary.financialPosition;
     const totalExp = afterCustomerSummary.expenseBook.totalExpenses;
-    if (fp.grossAmount !== fp.totalLiquidAmount) {
-      throw new Error(`Gross Amount must equal Total Liquid Amount (${fp.totalLiquidAmount}), got ${fp.grossAmount}`);
+    if (fp.netAmount !== fp.totalLiquidAmount) {
+      throw new Error(`Net Amount must equal Total Available Liquid Cash (${fp.totalLiquidAmount}), got ${fp.netAmount}`);
     }
-    if (fp.netAmount !== fp.totalLiquidAmount - totalExp - fp.amountToGive) {
-      throw new Error(`Net Amount formula mismatch! Expected ${fp.totalLiquidAmount - totalExp - fp.amountToGive}, got ${fp.netAmount}`);
+    if (fp.grossAmount !== fp.totalLiquidAmount + fp.amountToGet + totalExp) {
+      throw new Error(`Gross Amount formula mismatch! Expected ${fp.totalLiquidAmount + fp.amountToGet + totalExp}, got ${fp.grossAmount}`);
     }
-    if (afterCustomerSummary.expectedClosingBalance !== afterCustomerSummary.openingBalance + afterCustomerSummary.dayBook.totalSales + afterCustomerSummary.customerBook.customerCollectionNet - totalExp + afterCustomerSummary.creditCardBook.creditCardNet) {
-      throw new Error(`Expected Closing Balance must incorporate Customer Collection Net (${afterCustomerSummary.customerBook.customerCollectionNet})`);
+    const expectedD3Closing =
+      afterCustomerSummary.openingBalance +
+      afterCustomerSummary.dayBook.totalSales +
+      afterCustomerSummary.creditCardBook.creditCardNet +
+      afterCustomerSummary.customerBook.customerNet -
+      totalExp;
+    if (afterCustomerSummary.expectedClosingBalance !== expectedD3Closing) {
+      throw new Error(`Expected Closing Balance must match formula! Expected ${expectedD3Closing}, got ${afterCustomerSummary.expectedClosingBalance}`);
     }
-    console.log(`✓ User's Gross Amount (≈ Total Cash) & Net Amount (Total Cash - Expenses - To Give) exact formulas verified!`);
+    console.log(`✓ User's Gross Amount (Available Cash + To Get + Exp) & Net Amount (Available Cash) exact formulas verified!`);
+    console.log(`✓ Closing Cash Calculation formula: Opening (${afterCustomerSummary.openingBalance}) + Sales (${afterCustomerSummary.dayBook.totalSales}) + Cust Cash (${afterCustomerSummary.customerBook.customerNet}) - Exp (${totalExp}) = ${afterCustomerSummary.expectedClosingBalance}`);
     console.log(`✓ Milestone cycle snapshot verified:`, {
       openingGross: afterCustomerSummary.milestoneCycle?.openingMilestone.grossAmount,
       openingNet: afterCustomerSummary.milestoneCycle?.openingMilestone.netAmount,
       closingGross: afterCustomerSummary.milestoneCycle?.closingMilestone.grossAmount,
       closingNet: afterCustomerSummary.milestoneCycle?.closingMilestone.netAmount,
     });
+
+    // =========================================================================
+    // SCENARIO 5: USER'S EXACT NUMERICAL EXAMPLE FROM PROMPT
+    // Opening: HDFC 100, SBI 100, Wallet 100, CC cash 20 = 320 Net Cash
+    // Daytime: Sales 500, Cust Cash given 100, Expenses 50 -> Expected = 870
+    // Closing Count: HDFC 500, SBI 300, Wallet 70 = 870 -> 0 Discrepancy!
+    // =========================================================================
+    console.log('\n--- [Scenario 5: User Exact Numerical Example Verification] ---');
+    const userExDay = '1990-01-01'; // Before any test days, guaranteed no prior closing records
+    await DailyClosingModel.deleteMany({ date: userExDay });
+    await ExpenseModel.deleteMany({ date: { $gte: getStartOfDayIST(userExDay), $lte: getEndOfDayIST(userExDay) } });
+    await DayBookEntryModel.deleteMany({ date: { $gte: getStartOfDayIST(userExDay), $lte: getEndOfDayIST(userExDay) } });
+
+    // Open Day with 320 Net Cash
+    const exOpen = await service.openDay(
+      {
+        date: userExDay,
+        openingBalance: 320,
+        manualSplitUps: [
+          { sourceName: 'HDFC', amount: 100 },
+          { sourceName: 'SBI', amount: 100 },
+          { sourceName: 'Wallet', amount: 100 },
+          { sourceName: 'Credit Card Cash', amount: 20 },
+        ],
+      },
+      { todayOverride: userExDay }
+    );
+    if (exOpen.closing.openingBalance !== 320) throw new Error('User example opening net cash must be 320');
+    console.log(`✓ Opened day with Net Cash = ₹${exOpen.closing.openingBalance}`);
+
+    // Daytime activity: Sales 500, Expenses 50
+    await DayBookEntryModel.create({
+      billerId: biller._id,
+      amount: 500,
+      accountId: cashAccount._id,
+      date: dayjs.tz(userExDay, TIMEZONE).hour(12).toDate(),
+      monthKey: dayjs(userExDay).format('YYYY-MM'),
+      customerName: 'Example Customer Sale',
+      paymentMode: 'CASH',
+    });
+    await ExpenseModel.create({
+      title: 'Example Expense',
+      amount: 50,
+      category: 'General',
+      accountId: cashAccount._id,
+      date: dayjs.tz(userExDay, TIMEZONE).hour(14).toDate(),
+    });
+
+    // Customer gave 100 (repayment into cash)
+    await CreditModel.create({
+      partyName: `${testCustomerPrefix}EX_CUST_100`,
+      totalGiven: 100,
+      totalRepaid: 100,
+      balanceDue: 0,
+      status: 'ACTIVE',
+      entries: [
+        {
+          type: CreditTransactionType.REPAYMENT,
+          amount: 100,
+          accountId: cashAccount._id,
+          date: dayjs.tz(userExDay, TIMEZONE).hour(15).toDate(),
+          remarks: 'Customer gave 100 as credit',
+        },
+      ],
+    });
+
+    const exPreClose = await service.getLiveDaySummary(userExDay, { todayOverride: userExDay });
+    // Formula: 320 (Opening Net) + 500 (Sales) + 100 (Customer Cash Given) - 50 (Expenses) = 870
+    if (exPreClose.expectedClosingBalance !== 870) {
+      throw new Error(`Expected closing cash must be 870, got ${exPreClose.expectedClosingBalance}`);
+    }
+    console.log(`✓ System automatically calculated Closing Cash = ₹${exPreClose.expectedClosingBalance} (Opening 320 + Sales 500 + Cust Cash 100 - Exp 50)`);
+
+    // Accountant enters available cash: HDFC 500, SBI 300, Wallet 70 = 870
+    const exClose = await service.saveDailyClosing(
+      {
+        date: userExDay,
+        manualSplitUps: [
+          { sourceName: 'HDFC', amount: 500 },
+          { sourceName: 'SBI', amount: 300 },
+          { sourceName: 'Wallet', amount: 70 },
+        ],
+      },
+      { todayOverride: userExDay }
+    );
+    if (!exClose.isBalanced || exClose.variance !== 0) {
+      throw new Error(`Expected zero discrepancy, got variance ${exClose.variance}`);
+    }
+    if (exClose.closing.actualClosingBalance !== 870) {
+      throw new Error(`Expected actual closing cash 870, got ${exClose.closing.actualClosingBalance}`);
+    }
+    console.log(`✓ Accountant counted available cash: HDFC 500 + SBI 300 + Wallet 70 = ₹${exClose.closing.actualClosingBalance}`);
+    console.log(`✓ Net automatically calculated vs Available Cash is SAME: Zero Discrepancy (Status: ${exClose.closing.status})!`);
+
+    await DailyClosingModel.deleteMany({ date: userExDay });
+    await ExpenseModel.deleteMany({ date: { $gte: getStartOfDayIST(userExDay), $lte: getEndOfDayIST(userExDay) } });
+    await DayBookEntryModel.deleteMany({ date: { $gte: getStartOfDayIST(userExDay), $lte: getEndOfDayIST(userExDay) } });
 
     console.log('\n=====================================================');
     console.log('🎉 ALL SIMULATION SCENARIOS PASSED 100%!');

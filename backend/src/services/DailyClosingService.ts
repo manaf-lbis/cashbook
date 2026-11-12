@@ -361,9 +361,9 @@ export class DailyClosingService {
     const isOpeningLocked = isOpened || !!(previousClosed || previousAnyRecord?.isOpened);
     const openingBalance = isOpened && existingClosing ? existingClosing.openingBalance : reconciledOpeningBalance;
 
-    // Expected Liquid Closing Cash: Opening + Sales + Customer Collection (Get - Give) - Expenses + Card Net
+    // Expected Closing Cash = Opening Net Cash + Sales + Credit Card Net + Customer Cash Given - Total Expenses
     const expectedClosingBalance =
-      openingBalance + totalDayBookSales + customerCollectionNet - totalExpenses + creditCardNet;
+      openingBalance + totalDayBookSales + creditCardNet + customerCashNetToday - totalExpenses;
 
     // Total Amount We Need to Get & Give across entire ledger
     const amountToGet = customerToGet + supplierToGet;
@@ -375,11 +375,10 @@ export class DailyClosingService {
       : expectedClosingBalance;
 
     // User's exact definitions:
-    // 1. Total Cash Available (Liquid Cash) = Old bank accounts + cash drawer everywhere
-    // 2. Gross Amount ≈ Total Cash Available
-    // 3. Net Amount = Total Cash Available - All Expenses - All Cash We Need to Give
-    const grossAmount = effectiveLiquidAmount;
-    const netAmount = effectiveLiquidAmount - totalExpenses - amountToGive;
+    // 1. Net Cash = Current Available Liquid Cash (e.g. 320 at opening, 870 at closing)
+    // 2. Gross Amount = Available Cash + Customer Receivables (Amount to Get) + Total Expenses (e.g. 320 + 30 + 10 = 360)
+    const netAmount = effectiveLiquidAmount;
+    const grossAmount = effectiveLiquidAmount + amountToGet + totalExpenses;
 
     // 10. Default Split-Up Sources
     let defaultSplitUps: IManualCashSplitUp[] = [];
@@ -447,7 +446,7 @@ export class DailyClosingService {
         entries: dayBookEntries.slice(0, 50),
       },
       customerBook: {
-        customerNet: customerCollectionNet, // Customer Collection (Get - Give)
+        customerNet: customerCashNetToday, // Daytime cash received from customers (repayments - credit given)
         totalRepayments: customerRepayments,
         totalCreditGiven: customerCreditGiven,
         customerToGet,
@@ -605,6 +604,9 @@ export class DailyClosingService {
           : `Day opened with opening shortage of -₹${diffFormatted} (Counted ₹${openingCountedBalance.toLocaleString('en-IN')} vs Expected ₹${openingExpectedBalance.toLocaleString('en-IN')}).`;
     }
 
+    const openingGross = openingCountedBalance + fp.amountToGet + liveSummary.expenseBook.totalExpenses;
+    const openingNet = openingCountedBalance;
+
     const record = await DailyClosingModel.create({
       date,
       isOpened: true,
@@ -639,10 +641,10 @@ export class DailyClosingService {
       totalLiquidAmount: openingCountedBalance,
       amountToGet: fp.amountToGet,
       amountToGive: fp.amountToGive,
-      grossAmount: openingCountedBalance,
-      netAmount: openingCountedBalance - fp.amountToGive,
-      openingGrossAmount: openingCountedBalance,
-      openingNetAmount: openingCountedBalance - fp.amountToGive,
+      grossAmount: openingGross,
+      netAmount: openingNet,
+      openingGrossAmount: openingGross,
+      openingNetAmount: openingNet,
     });
 
     return {
@@ -687,17 +689,17 @@ export class DailyClosingService {
     const liveSummary = await this.getLiveDaySummary(date, options);
     const authoritativeOpeningBalance = existing.openingBalance;
     const dayBookSales = liveSummary.dayBook.totalSales;
-    const customerCollectionNet = liveSummary.customerBook.customerCollectionNet;
     const customerRepayments = liveSummary.customerBook.totalRepayments;
     const customerCreditGiven = liveSummary.customerBook.totalCreditGiven;
+    const customerCashNetToday = customerRepayments - customerCreditGiven;
     const expenseTotal = liveSummary.expenseBook.totalExpenses;
     const creditCardNet = liveSummary.creditCardBook.creditCardNet;
     const creditCardDrawn = liveSummary.creditCardBook.creditCardDrawn;
     const creditCardPayment = liveSummary.creditCardBook.creditCardPayment;
 
-    // Expected Closing Balance incorporates Customer Collection (Get - Give)
+    // Expected Closing Balance = Opening Net Cash + Sales + Card Net + Customer Cash Given - Expenses
     const expectedClosingBalance =
-      authoritativeOpeningBalance + dayBookSales + customerCollectionNet - expenseTotal + creditCardNet;
+      authoritativeOpeningBalance + dayBookSales + creditCardNet + customerCashNetToday - expenseTotal;
 
     const actualClosingBalance = manualSplitUps.reduce(
       (sum, item) => sum + (Number(item.amount) || 0),
@@ -715,11 +717,10 @@ export class DailyClosingService {
     const effectiveCashInHand = countedCashInHand > 0 ? countedCashInHand : fp.cashInHand;
 
     // User's defined pillars:
-    // 1. Total Cash Available (Liquid Cash) = actualClosingBalance
-    // 2. Gross Amount ≈ Total Cash Available
-    // 3. Net Amount = Total Cash Available - All Expenses - All Cash We Need to Give
-    const grossAmount = actualClosingBalance;
-    const netAmount = actualClosingBalance - expenseTotal - fp.amountToGive;
+    // 1. Net Cash = Current Available Liquid Cash (actualClosingBalance, e.g. 870)
+    // 2. Gross Amount = Available Cash + Customer Receivables (Amount to Get) + Total Expenses
+    const netAmount = actualClosingBalance;
+    const grossAmount = actualClosingBalance + fp.amountToGet + expenseTotal;
 
     let warningMessage: string | null = null;
     if (!isBalanced) {
@@ -744,12 +745,12 @@ export class DailyClosingService {
     }
 
     existing.dayBookSales = dayBookSales;
-    existing.customerNet = customerCollectionNet;
+    existing.customerNet = customerCashNetToday;
     existing.customerRepayments = customerRepayments;
     existing.customerCreditGiven = customerCreditGiven;
     existing.customerToGet = liveSummary.customerBook.customerToGet;
     existing.customerToGive = liveSummary.customerBook.customerToGive;
-    existing.customerCollectionNet = customerCollectionNet;
+    existing.customerCollectionNet = liveSummary.customerBook.customerCollectionNet;
     existing.expenseTotal = expenseTotal;
     existing.creditCardNet = creditCardNet;
     existing.creditCardDrawn = creditCardDrawn;
